@@ -1,0 +1,1147 @@
+/*
+ * Estilos da tela de Produtos e Estoque.
+ *
+ * A organização dos estilos segue as principais áreas da página:
+ * navegação, cabeçalho, indicadores, filtros, tabela e formulário.
+ *
+ * Este arquivo usa CSS Modules para limitar os nomes das classes
+ * a esta página e evitar conflitos com outros módulos do sistema.
+ */
+
+/* ============================================================
+   1. ESTRUTURA GERAL E MENU LATERAL
+   ============================================================ */
+
+/* Container com menu fixo à esquerda e conteúdo à direita. */
+.pagina {
+  --navy: #10243a;
+  --azul: #2864d8;
+  --texto: #18283c;
+  --textoSecundario: #758397;
+  --borda: #e8edf3;
+  --fundo: #f5f7fb;
+
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+}
+
+.pagina * {
+  box-sizing: border-box;
+}
+
+/* Barra lateral em tom escuro, consistente com o Dashboard. */
+.sidebar {
+  /* Mantém o menu visível durante a rolagem da página. */
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 28px 17px 20px;
+  background: var(--navy);
+  color: #d6dfeb;
+}
+
+/* Marca que permite retornar ao Dashboard. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 9px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.brandIcon {
+  width: 43px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: #376ee0;
+  color: white;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.brand > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+}
+
+.brand small {
+  color: #9cafc7;
+  font-size: 10px;
+  letter-spacing: 2.5px;
+}
+
+/* Resumo da empresa selecionada, ainda demonstrativo. */
+.empresaDemo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px;
+  border: 1px solid #2c425b;
+  border-radius: 10px;
+  background: #172e47;
+}
+
+.empresaIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: #e5efff;
+  color: #1b4d9f;
+  font-weight: 800;
+}
+
+.empresaDemo > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.empresaDemo strong {
+  color: white;
+  font-size: 12px;
+}
+
+.empresaDemo small {
+  color: #9aadc3;
+  font-size: 10px;
+}
+
+/* Navegação vertical da área operacional. */
+.navegacao {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tituloMenu {
+  margin: 3px 0 8px;
+  padding: 0 11px;
+  color: #8ea1ba;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.tituloMenu:not(:first-child) {
+  margin-top: 26px;
+}
+
+/* Estilo-base compartilhado pelos links do menu. */
+.itemMenu,
+.itemDesabilitado {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 11px;
+  border-radius: 8px;
+  color: #becbda;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+/* Destaca a página atual na navegação. */
+.itemAtivo {
+  background: #2b5bc0;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Símbolos de identificação dos módulos. */
+.itemMenu > span:first-child,
+.itemDesabilitado > span:first-child {
+  width: 19px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 18px;
+}
+
+.itemAtivo > span:first-child {
+  color: white;
+}
+
+/* Identifica os módulos que ainda não estão disponíveis. */
+.itemDesabilitado {
+  opacity: 0.78;
+}
+
+.itemDesabilitado small {
+  margin-left: auto;
+  color: #96a9bf;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+/* Rodapé do menu lateral. */
+.rodapeSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+  padding: 16px 10px 4px;
+  border-top: 1px solid #2c425b;
+  color: #a6b6c9;
+  font-size: 10px;
+}
+
+.rodapeSidebar a {
+  color: #c2cfde;
+  text-decoration: none;
+}
+
+.rodapeSidebar a:hover {
+  color: white;
+}
+
+/* ============================================================
+   2. CABEÇALHO E CONTEÚDO PRINCIPAL
+   ============================================================ */
+
+.conteudoPrincipal {
+  min-width: 0;
+}
+
+/* Barra superior com o caminho atual e o aviso de demonstração. */
+.cabecalho {
+  min-height: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 34px;
+  border-bottom: 1px solid var(--borda);
+  background: white;
+  color: #8190a3;
+  font-size: 12px;
+}
+
+/* Selo que deixa claro que os registros são fictícios. */
+.seloDemo {
+  padding: 7px 10px;
+  border: 1px solid #f3dfad;
+  border-radius: 6px;
+  background: #fff9e9;
+  color: #8c6819;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+  text-align: center;
+}
+
+/* Limita a largura do conteúdo e centraliza a página. */
+.conteudo {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 30px 34px;
+}
+
+/* Título, descrição e botão principal da tela. */
+.introducao {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 27px;
+}
+
+.identificadorSecao {
+  color: #5279c1;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+}
+
+.introducao h1 {
+  margin: 9px 0 7px;
+  color: #17263a;
+  font-size: clamp(26px, 3vw, 32px);
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.introducao p {
+  max-width: 660px;
+  margin: 0;
+  color: var(--textoSecundario);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   3. BOTÕES
+   ============================================================ */
+
+/* Botão principal utilizado para abrir e enviar o cadastro. */
+.botaoPrincipal {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 16px;
+  border: 1px solid var(--azul);
+  border-radius: 8px;
+  background: var(--azul);
+  color: white;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.botaoPrincipal:hover {
+  border-color: #1d4eaf;
+  background: #1d4eaf;
+}
+
+.botaoPrincipal:focus-visible,
+.botaoSecundario:focus-visible,
+.botaoLimpar:focus-visible,
+.botaoFechar:focus-visible {
+  outline: 3px solid #a9c5ff;
+  outline-offset: 2px;
+}
+
+.botaoPrincipal > span {
+  font-size: 19px;
+  line-height: 1;
+}
+
+/* Botão secundário do formulário. */
+.botaoSecundario {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid #dce3ed;
+  border-radius: 8px;
+  background: white;
+  color: #516176;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.botaoSecundario:hover {
+  background: #f5f7fb;
+}
+
+/* Limpeza dos filtros sem recarregar a página. */
+.botaoLimpar {
+  min-height: 42px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: #4369ae;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.botaoLimpar:hover {
+  color: #1d4eaf;
+  text-decoration: underline;
+}
+
+/* ============================================================
+   4. INDICADORES RESUMIDOS DO ESTOQUE
+   ============================================================ */
+
+/* Quatro cards distribuídos na largura disponível. */
+.resumo {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+/* Card de resumo com borda sutil e fundo branco. */
+.cardResumo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 19px 18px;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 2px 5px rgb(28 47 73 / 2%);
+}
+
+.cardResumo > span {
+  color: #718096;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.cardResumo strong {
+  color: #192b41;
+  font-size: clamp(22px, 2.2vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  overflow-wrap: anywhere;
+}
+
+/* Cores de destaque para indicadores de atenção. */
+.cardResumo .valorAlerta {
+  color: #bc8122;
+}
+
+.cardResumo .valorCritico {
+  color: #c94e58;
+}
+
+.cardResumo small {
+  color: #96a1b0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   5. PAINEL, CABEÇALHO DA TABELA E FILTROS
+   ============================================================ */
+
+/* Container principal da listagem de produtos. */
+.painelTabela {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 2px 5px rgb(28 47 73 / 2%);
+}
+
+/* Título e contagem de resultados acima dos filtros. */
+.tituloTabela {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 22px 22px 18px;
+}
+
+.tituloTabela h2 {
+  margin: 0;
+  color: #1c2d42;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.tituloTabela p {
+  margin: 7px 0 0;
+  color: #8a97a8;
+  font-size: 11px;
+}
+
+.contadorDemo {
+  padding: 7px 9px;
+  border: 1px solid #e1e8f1;
+  border-radius: 6px;
+  background: #f8faff;
+  color: #72829a;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* Agrupa a pesquisa e os filtros em uma faixa. */
+.filtros {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 0 22px 20px;
+  border-bottom: 1px solid #eef1f5;
+}
+
+/* Campo de busca com ícone à esquerda. */
+.campoPesquisa {
+  min-width: 220px;
+  min-height: 42px;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid #dfe6ef;
+  border-radius: 8px;
+  background: white;
+  color: #8a99ad;
+}
+
+.campoPesquisa:focus-within {
+  border-color: #7ca3f3;
+  box-shadow: 0 0 0 3px rgb(40 100 216 / 8%);
+}
+
+.campoPesquisa > span:first-child {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.campoPesquisa input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #283b52;
+  font: inherit;
+  font-size: 11px;
+}
+
+.campoPesquisa input::placeholder {
+  color: #9aa6b5;
+}
+
+/* Rótulo visual e campo de seleção. */
+.campoFiltro {
+  min-width: 155px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.campoFiltro > span {
+  color: #6d7c90;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.campoFiltro select {
+  width: 100%;
+  height: 42px;
+  padding: 0 11px;
+  border: 1px solid #dfe6ef;
+  border-radius: 8px;
+  background: white;
+  color: #42546b;
+  font: inherit;
+  font-size: 11px;
+}
+
+.campoPesquisa input:focus-visible,
+.campoFiltro select:focus-visible,
+.camposFormulario input:focus-visible,
+.camposFormulario select:focus-visible {
+  outline: 2px solid #8ab0ff;
+  outline-offset: 1px;
+}
+
+/* Texto acessível para leitores de tela, sem ocupar espaço visual. */
+.visualmenteOculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+/* ============================================================
+   6. TABELA DE PRODUTOS
+   ============================================================ */
+
+/*
+ * Permite rolagem horizontal quando a tabela não couber,
+ * evitando que o restante da interface fique mais largo.
+ */
+.tabelaResponsiva {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* Tabela que apresenta os principais dados de cada produto. */
+.tabelaProdutos {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* Cabeçalho das colunas. */
+.tabelaProdutos th {
+  padding: 14px 16px;
+  border-bottom: 1px solid #eef1f5;
+  background: #fafbfd;
+  color: #8290a2;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* Células de conteúdo da tabela. */
+.tabelaProdutos td {
+  padding: 15px 16px;
+  border-bottom: 1px solid #f0f2f6;
+  color: #718096;
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+/* Retira a última borda inferior do corpo da tabela. */
+.tabelaProdutos tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Agrupa o ícone com o nome e a unidade do produto. */
+.identificacaoProduto {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 195px;
+}
+
+/* Ícone ilustrativo do produto. */
+.iconeProduto {
+  width: 37px;
+  height: 37px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid #e4ebf5;
+  border-radius: 9px;
+  background: #f2f6fd;
+  color: #426bb2;
+  font-size: 17px;
+}
+
+/* Informações textuais do produto. */
+.identificacaoProduto > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.identificacaoProduto strong {
+  max-width: 260px;
+  overflow: hidden;
+  color: #2d3f55;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.identificacaoProduto small {
+  color: #99a4b2;
+  font-size: 10px;
+}
+
+/* Aparência do código SKU. */
+.sku {
+  color: #566980 !important;
+  font-weight: 700;
+}
+
+/* Quantidade mínima logo abaixo do saldo atual. */
+.quantidadeMinima {
+  display: block;
+  margin-top: 5px;
+  color: #99a4b2;
+  font-size: 10px;
+}
+
+/* Valor de venda do produto. */
+.preco {
+  color: #334860 !important;
+  font-weight: 700;
+}
+
+/* Base compartilhada dos selos de situação do estoque. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* Produtos com saldo superior ao mínimo definido. */
+.statusAdequado {
+  background: #e8f8f1;
+  color: #21865e;
+}
+
+/* Produtos com saldo no limite ou abaixo do mínimo. */
+.statusBaixo {
+  background: #fff5df;
+  color: #9a6a16;
+}
+
+/* Produtos cuja quantidade disponível é zero. */
+.statusZerado {
+  background: #ffebed;
+  color: #bc3f4b;
+}
+
+/* Mensagem apresentada quando os filtros não encontram produtos. */
+.semResultados {
+  padding: 38px 20px !important;
+  color: #8795a7 !important;
+  text-align: center;
+  white-space: normal;
+}
+
+/* Aviso abaixo da tabela sobre o armazenamento temporário. */
+.avisoDemonstracao {
+  margin: 0 22px 22px;
+  padding: 13px 14px;
+  border: 1px solid #f3dfad;
+  border-radius: 8px;
+  background: #fff9e9;
+  color: #876c35;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.avisoDemonstracao strong {
+  color: #775819;
+}
+
+/* ============================================================
+   7. FORMULÁRIO MODAL DE NOVO PRODUTO
+   ============================================================ */
+
+/*
+ * Fundo semitransparente que destaca a janela do formulário.
+ * A janela permanece dentro da tela e sobre o conteúdo existente.
+ */
+.fundoModal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 24px;
+  background: rgb(12 27 45 / 60%);
+  backdrop-filter: blur(3px);
+}
+
+/* Janela que contém o formulário de cadastro. */
+.modal {
+  width: 100%;
+  max-width: 620px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 25px;
+  border: 1px solid #e8edf3;
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 20px 70px rgb(0 0 0 / 20%);
+}
+
+/* Título e botão para fechar a janela. */
+.cabecalhoModal {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 23px;
+}
+
+.cabecalhoModal h2 {
+  margin: 0;
+  color: #1c2d42;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.cabecalhoModal p {
+  margin: 7px 0 0;
+  color: #8a97a8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Botão de fechamento no canto da janela. */
+.botaoFechar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  background: white;
+  color: #718096;
+  font-size: 23px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.botaoFechar:hover {
+  background: #f5f7fb;
+  color: #24384f;
+}
+
+/* Organiza os campos do formulário em duas colunas. */
+.camposFormulario {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 17px 14px;
+}
+
+/* Cada campo inclui rótulo e elemento de entrada. */
+.camposFormulario label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #52647a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Campos que devem ocupar as duas colunas do formulário. */
+.camposFormulario .campoCompleto {
+  grid-column: 1 / -1;
+}
+
+/* Aparência consistente dos campos de formulário. */
+.camposFormulario input,
+.camposFormulario select {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0 11px;
+  border: 1px solid #dfe6ef;
+  border-radius: 8px;
+  background: white;
+  color: #34475d;
+  font: inherit;
+  font-size: 12px;
+}
+
+.camposFormulario input::placeholder {
+  color: #a1acb9;
+  font-weight: 400;
+}
+
+/* Mensagem de validação local do formulário. */
+.erroFormulario {
+  margin: 16px 0 0;
+  padding: 11px 12px;
+  border: 1px solid #f1c5c9;
+  border-radius: 8px;
+  background: #fff0f1;
+  color: #b3303d;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Botões de ação alinhados ao lado direito. */
+.acoesFormulario {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 25px;
+}
+
+/* Aviso sobre a ausência de persistência no banco. */
+.notaFormulario {
+  margin: 17px 0 0;
+  color: #929eae;
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: right;
+}
+
+/* ============================================================
+   8. RESPONSIVIDADE PARA TELAS MÉDIAS
+   ============================================================ */
+
+@media (max-width: 1250px) {
+  /* Reduz a quantidade de colunas dos indicadores. */
+  .resumo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Reduz as margens laterais do conteúdo. */
+  .conteudo {
+    padding: 25px 22px;
+  }
+
+  .cabecalho {
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  /*
+   * Permite que a busca e os filtros se distribuam
+   * em várias linhas quando houver pouco espaço.
+   */
+  .filtros {
+    align-items: stretch;
+  }
+
+  .campoPesquisa {
+    flex-basis: 100%;
+  }
+}
+
+/* ============================================================
+   9. RESPONSIVIDADE PARA TABLETS
+   ============================================================ */
+
+@media (max-width: 980px) {
+  /* Faz o menu passar de lateral para a parte superior. */
+  .pagina {
+    grid-template-columns: 1fr;
+  }
+
+.sidebar {
+  /* Mantém o comportamento compacto em telas menores. */
+  position: static;
+  top: auto;
+  align-self: stretch;
+  height: auto;
+  min-height: auto;
+  overflow: visible;
+
+  gap: 17px;
+  padding: 18px;
+}
+
+  /* Reduz o espaço da marca no menu compacto. */
+  .brand {
+    padding: 0 2px;
+  }
+
+  /*
+   * O seletor de empresa e o rodapé são ocultados para
+   * liberar espaço em telas menores.
+   */
+  .empresaDemo,
+  .rodapeSidebar {
+    display: none;
+  }
+
+  /* Transforma a navegação em uma faixa horizontal rolável. */
+  .navegacao {
+    flex-direction: row;
+    align-items: center;
+    gap: 7px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  /* Oculta os títulos dos grupos e os avisos de módulos futuros. */
+  .tituloMenu,
+  .itemDesabilitado small {
+    display: none;
+  }
+
+  .itemMenu,
+  .itemDesabilitado {
+    min-height: 39px;
+    flex-shrink: 0;
+    padding: 0 10px;
+  }
+}
+
+/* ============================================================
+   10. RESPONSIVIDADE PARA CELULARES
+   ============================================================ */
+
+@media (max-width: 600px) {
+  /* Cabeçalho mais compacto. */
+  .cabecalho {
+    min-height: 64px;
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 9px;
+    padding: 13px 16px;
+  }
+
+  .seloDemo {
+    font-size: 8px;
+  }
+
+  /* Reduz os espaçamentos laterais da página. */
+  .conteudo {
+    padding: 23px 14px;
+  }
+
+  /* Empilha título e botão de cadastro. */
+  .introducao {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .introducao .botaoPrincipal {
+    width: 100%;
+  }
+
+  /* Um indicador por linha facilita a leitura em celulares. */
+  .resumo {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .cardResumo {
+    padding: 17px;
+  }
+
+  /* Reduz o preenchimento do painel principal. */
+  .tituloTabela {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px 16px;
+  }
+
+  /* Mantém a pesquisa e os filtros utilizáveis. */
+  .filtros {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0 16px 17px;
+  }
+
+  .campoPesquisa,
+  .campoFiltro {
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+  }
+
+  .botaoLimpar {
+    align-self: flex-start;
+    padding-left: 0;
+  }
+
+  /* Permite rolagem da tabela sem expandir a página. */
+  .tabelaProdutos {
+    min-width: 760px;
+  }
+
+  .avisoDemonstracao {
+    margin-right: 14px;
+    margin-left: 14px;
+  }
+
+  /* A janela modal passa a usar quase toda a largura disponível. */
+  .fundoModal {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: calc(100vh - 24px);
+    padding: 19px;
+  }
+
+  /* Os campos passam a ocupar uma única coluna. */
+  .camposFormulario {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .camposFormulario .campoCompleto {
+    grid-column: auto;
+  }
+
+  .acoesFormulario {
+    flex-direction: column-reverse;
+  }
+
+  .acoesFormulario button {
+    width: 100%;
+  }
+
+  .notaFormulario {
+    text-align: left;
+  }
+}
+/* ============================================================
+   RENTABILIDADE ESTIMADA DOS PRODUTOS
+   ============================================================ */
+
+/* Lucro bruto positivo por unidade. */
+.resultadoPositivo {
+  color: #16835d !important;
+}
+
+.resultadoPositivo strong {
+  font-weight: 800;
+}
+
+/* Custo superior ao preço de venda. */
+.resultadoNegativo {
+  color: #c0392b !important;
+}
+
+.resultadoNegativo strong {
+  font-weight: 800;
+}
+
+/* Resultado bruto exatamente igual a zero. */
+.resultadoNeutro {
+  color: #64748b !important;
+}
+
+/* Complemento do valor unitário. */
+.tabelaProdutos td small {
+  display: block;
+  margin-top: 4px;
+  color: #94a0af;
+  font-size: 9px;
+}
+
+/* Selo compartilhado de margem bruta. */
+.margemBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 9px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.margemPositiva {
+  background: #e8f8f1;
+  color: #21865e;
+}
+
+.margemNegativa {
+  background: #ffebed;
+  color: #bc3f4b;
+}
+
+.margemIndisponivel {
+  color: #8795a7;
+  font-size: 10px;
+}

@@ -1,0 +1,397 @@
+
+/* Carrega o Tailwind CSS, utilizado para recursos de estilização. */
+@import "tailwindcss";
+
+/* Variáveis globais de cores, reutilizadas em diferentes componentes. */
+:root {
+  --background: #f3f6fb;
+  --foreground: #17243a;
+  --brand-dark: #10213b;
+  --brand-blue: #2864e8;
+  --text-muted: #758198;
+  --border-color: #dfe5ef;
+}
+
+/* Faz com que largura e altura incluam bordas e preenchimentos. */
+* {
+  box-sizing: border-box;
+}
+
+/* Remove margens padrão e garante altura mínima para a página. */
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+/* Define a aparência básica do documento. */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Faz campos e botões herdarem a fonte definida para a página. */
+button,
+input {
+  font: inherit;
+}
+
+/* Indica visualmente que os botões podem ser clicados. */
+button {
+  cursor: pointer;
+}
+
+/* Organiza a tela em duas colunas: apresentação e formulário. */
+.login-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.9fr);
+  min-height: 100vh;
+}
+
+/* Painel esquerdo com fundo escuro e identidade visual. */
+.login-brand {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  padding: 64px clamp(32px, 7vw, 112px);
+  background:
+    radial-gradient(ellipse at 15% 85%, #21477b 0%, transparent 48%),
+    linear-gradient(145deg, #142b4b, #0b172a 75%);
+  color: #fff;
+}
+
+/* Adiciona círculos decorativos ao fundo do painel esquerdo. */
+.login-brand::after {
+  position: absolute;
+  right: -140px;
+  bottom: -200px;
+  width: 440px;
+  height: 440px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 50%;
+  content: "";
+  box-shadow:
+    0 0 0 45px rgb(255 255 255 / 3%),
+    0 0 0 90px rgb(255 255 255 / 2%);
+}
+
+/* Mantém o conteúdo acima dos elementos decorativos. */
+.brand-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* Alinha o símbolo e o nome da aplicação. */
+.brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+}
+
+/* Formata o símbolo "GC" da identidade visual. */
+.brand-logo-icon {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 9%);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+/* Destaca a palavra "COMERCIAL" no logotipo. */
+.brand-light {
+  display: block;
+  margin-top: 3px;
+  color: #9db9ed;
+  font-size: 10px;
+  letter-spacing: 2.6px;
+}
+
+/* Afasta o texto institucional do logotipo. */
+.brand-message {
+  margin-top: clamp(72px, 13vh, 150px);
+}
+
+/* Formata os pequenos títulos em azul. */
+.brand-tag,
+.welcome-label {
+  color: #6e9aff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+/* Define tamanho e espaçamento do título principal. */
+.brand-message h1 {
+  margin: 22px 0;
+  font-size: clamp(38px, 4vw, 62px);
+  font-weight: 750;
+  letter-spacing: -2.5px;
+  line-height: 1.1;
+}
+
+/* Formata o texto descritivo do painel. */
+.brand-message p {
+  max-width: 390px;
+  color: #c0cde0;
+  font-size: 16px;
+  line-height: 1.9;
+}
+
+/* Posiciona a frase institucional abaixo do conteúdo principal. */
+.brand-footer {
+  margin-top: clamp(70px, 13vh, 140px);
+  color: #a5b8d4;
+  font-size: 10px;
+  letter-spacing: 1.7px;
+}
+
+/* Centraliza o formulário na área clara da página. */
+.login-area {
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  padding: 48px clamp(24px, 5vw, 76px);
+  background: #fff;
+}
+
+/* Limita a largura do formulário para manter boa legibilidade. */
+.login-card {
+  width: 100%;
+  max-width: 410px;
+}
+
+/* A marca para celular fica escondida em telas maiores. */
+.mobile-brand {
+  display: none;
+}
+
+/* Espaçamento entre o título e os campos do formulário. */
+.login-heading {
+  margin-bottom: 38px;
+}
+
+/* Estilo do título "Acesse sua conta". */
+.login-heading h2 {
+  margin: 13px 0 10px;
+  color: #17243a;
+  font-size: clamp(28px, 3vw, 35px);
+  font-weight: 750;
+  letter-spacing: -1.2px;
+}
+
+/* Texto auxiliar abaixo do título. */
+.login-heading p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* Organiza os campos verticalmente com espaçamento uniforme. */
+.login-form {
+  display: grid;
+  gap: 24px;
+}
+
+/* Cada campo reúne seu rótulo e a caixa de entrada. */
+.form-field {
+  display: grid;
+  gap: 10px;
+}
+
+/* Aparência dos rótulos "E-mail" e "Senha". */
+.form-field label {
+  color: #29364b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Estilo padrão dos campos de texto. */
+.form-field input {
+  width: 100%;
+  height: 53px;
+  padding: 0 15px;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  outline: none;
+  background: #fff;
+  color: #17243a;
+  font-size: 14px;
+  transition: border-color 160ms, box-shadow 160ms;
+}
+
+/* Cor mais suave para os exemplos exibidos nos campos vazios. */
+.form-field input::placeholder {
+  color: #a4adbd;
+}
+
+/* Realça o campo que está selecionado pelo usuário. */
+.form-field input:focus {
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgb(40 100 232 / 11%);
+}
+
+/* Permite posicionar o botão de senha dentro do campo. */
+.password-input {
+  position: relative;
+}
+
+/* Reserva espaço à direita para o botão "Mostrar". */
+.password-input input {
+  padding-right: 90px;
+}
+
+/* Posiciona e estiliza o controle de visibilidade da senha. */
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  padding: 7px 0 7px 8px;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--brand-blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Estilo do botão principal de acesso. */
+.login-button {
+  display: flex;
+  height: 54px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 6px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--brand-blue);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 7px 16px rgb(40 100 232 / 18%);
+  transition: background 160ms, transform 160ms;
+}
+
+/* Efeito visual ao passar o mouse sobre o botão. */
+.login-button:hover {
+  transform: translateY(-1px);
+  background: #1e52c5;
+}
+
+/* Aumenta ligeiramente o símbolo de seta do botão. */
+.login-button span {
+  font-size: 20px;
+}
+
+/* Alinha o aviso de acesso autorizado abaixo do formulário. */
+.login-security {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin-top: 28px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Formata o pequeno símbolo de confirmação do aviso. */
+.security-icon {
+  display: grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8f7ef;
+  color: #208654;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* Rodapé da área de login. */
+.login-footer {
+  margin-top: 68px;
+  color: #9aa4b4;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* Em telas menores, troca o layout de duas colunas por uma coluna. */
+@media (max-width: 850px) {
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+
+  /* Esconde o painel institucional lateral no celular. */
+  .login-brand {
+    display: none;
+  }
+
+  /* Faz a área de acesso ocupar a tela disponível. */
+  .login-area {
+    min-height: 100vh;
+    padding: 36px 24px;
+  }
+
+  /* Ajusta a largura máxima do formulário para telas menores. */
+  .login-card {
+    max-width: 430px;
+  }
+
+  /* Exibe uma versão compacta da marca no topo do formulário. */
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 58px;
+    color: var(--brand-dark);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+
+  /* Adapta as cores do símbolo para o fundo claro. */
+  .mobile-brand .brand-logo-icon {
+    border-color: #d9e4f8;
+    background: var(--brand-dark);
+  }
+
+  /* Reduz o espaço inferior em telas menores. */
+  .login-footer {
+    margin-top: 54px;
+  }
+}
+
+/* Ajustes adicionais para celulares estreitos. */
+@media (max-width: 420px) {
+  .login-area {
+    padding: 28px 20px;
+  }
+
+  .mobile-brand {
+    margin-bottom: 44px;
+  }
+
+  .login-heading {
+    margin-bottom: 30px;
+  }
+
+  .login-form {
+    gap: 20px;
+  }
+}

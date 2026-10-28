@@ -3,8 +3,9 @@ generator cliente {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum PerfilAcesso {
@@ -23,6 +24,14 @@ enum TipoMovimentacao {
   LIBERACAO
 }
 
+enum FormaPagamento {
+  DINHEIRO
+  PIX
+  CARTAO_DEBITO
+  CARTAO_CREDITO
+  OUTRO
+}
+
 model Empresa {
   id       String   @id @default(uuid()) @db.Uuid
   nome     String
@@ -36,6 +45,7 @@ model Empresa {
   unidades             Unidade[]
   saldosEstoque        SaldoEstoque[]
   movimentacoesEstoque MovimentacaoEstoque[]
+  vendas               Venda[]
 }
 
 model Usuario {
@@ -49,6 +59,7 @@ model Usuario {
   criadoEm  DateTime     @default(now())
 
   empresa Empresa @relation(fields: [empresaId], references: [id])
+  vendas  Venda[]
 
   @@unique([empresaId, email])
   @@index([empresaId])
@@ -101,6 +112,7 @@ model Produto {
 
   saldoEstoque  SaldoEstoque?
   movimentacoes MovimentacaoEstoque[]
+  itensVenda    ItemVenda[]
 
   @@unique([empresaId, id])
   @@unique([empresaId, sku])
@@ -108,13 +120,20 @@ model Produto {
   @@index([empresaId, codigoBarras])
 }
 
+/**
+ * Mantém o saldo atual e o estoque mínimo de cada produto.
+ * O estoque mínimo é usado nos alertas de reposição.
+ * As movimentações são registradas separadamente.
+ */
 model SaldoEstoque {
-  id                   String   @id @default(uuid()) @db.Uuid
-  empresaId            String   @db.Uuid
-  produtoId            String   @unique @db.Uuid
-  quantidadeDisponivel Decimal  @default(0) @db.Decimal(14, 3)
-  quantidadeReservada  Decimal  @default(0) @db.Decimal(14, 3)
-  atualizadoEm         DateTime @updatedAt
+  id                   String  @id @default(uuid()) @db.Uuid
+  empresaId            String  @db.Uuid
+  produtoId            String  @unique @db.Uuid
+  quantidadeDisponivel Decimal @default(0) @db.Decimal(14, 3)
+  quantidadeReservada  Decimal @default(0) @db.Decimal(14, 3)
+  estoqueMinimo        Decimal @default(0) @db.Decimal(14, 3)
+
+  atualizadoEm DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id])
   produto Produto @relation(fields: [produtoId], references: [id])
@@ -138,4 +157,57 @@ model MovimentacaoEstoque {
   produto Produto @relation(fields: [produtoId], references: [id])
 
   @@index([empresaId, produtoId, criadoEm])
+}
+
+/**
+ * Registra uma venda concluída pela empresa.
+ * O total é calculado no backend, nunca confiado ao frontend.
+ * O usuário responsável é obtido da sessão autenticada.
+ */
+model Venda {
+  id             String         @id @default(uuid()) @db.Uuid
+  empresaId      String         @db.Uuid
+  usuarioId      String         @db.Uuid
+  formaPagamento FormaPagamento
+  total          Decimal        @db.Decimal(14, 2)
+  criadoEm       DateTime       @default(now())
+
+  empresa Empresa     @relation(fields: [empresaId], references: [id])
+  usuario Usuario     @relation(fields: [usuarioId], references: [id])
+  itens   ItemVenda[]
+
+  @@index([empresaId, criadoEm])
+  @@index([usuarioId, criadoEm])
+}
+
+/**
+ * Guarda os produtos incluídos em cada venda.
+ * Preço unitário e subtotal são armazenados como valores históricos,
+ * para que alterações futuras no cadastro do produto não modifiquem
+ * as vendas anteriores.
+ */
+model ItemVenda {
+  id             String   @id @default(uuid()) @db.Uuid
+  vendaId        String   @db.Uuid
+  produtoId      String   @db.Uuid
+  quantidade     Decimal  @db.Decimal(14, 3)
+  precoUnitario  Decimal  @db.Decimal(12, 2)
+  custoUnitario  Decimal? @db.Decimal(12, 2)
+  subtotal       Decimal  @db.Decimal(14, 2)
+
+  venda   Venda   @relation(fields: [vendaId], references: [id])
+  produto Produto @relation(fields: [produtoId], references: [id])
+
+  // Cada produto aparece uma vez por venda.
+  @@unique([vendaId, produtoId])
+  @@index([produtoId])
+}
+
+model AdministradorPlataforma {
+  id        String   @id @default(uuid()) @db.Uuid
+  nome      String
+  email     String   @unique
+  hashSenha String
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
 }

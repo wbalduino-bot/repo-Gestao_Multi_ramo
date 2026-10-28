@@ -1,0 +1,278 @@
+==========================================
+INVENTARIO DO PROJETO GESTAO COMERCIAL
+Data: Sat Oct 24 21:32:50     2026
+==========================================
+
+### 1. ESTRUTURA DE DIRETORIOS
+.
+./apps-api
+./apps-api/.agents
+./apps-api/.agents/skills
+./apps-api/.agents/skills/prisma-composer-core-concepts
+./apps-api/.agents/skills/prisma-platform-core-concepts
+./apps-api/.claude
+./apps-api/.claude/skills
+./apps-api/.claude/skills/prisma-composer-core-concepts
+./apps-api/.claude/skills/prisma-platform-core-concepts
+./apps-api/.cursor
+./apps-api/.cursor/skills
+./apps-api/.cursor/skills/prisma-composer-core-concepts
+./apps-api/.cursor/skills/prisma-platform-core-concepts
+./apps-api/.devin
+./apps-api/.devin/skills
+./apps-api/.devin/skills/prisma-composer-core-concepts
+./apps-api/.devin/skills/prisma-platform-core-concepts
+./apps-api/apps-web
+./apps-api/apps-web/app
+./apps-api/prisma
+./apps-api/prisma/migrations
+./apps-api/prisma/migrations/20261023222600_inicial
+./apps-api/prisma/migrations/20261024193019_adicionar_administrador_plataforma
+./apps-api/scripts
+./apps-api/src
+./apps-api/src/admin-plataforma
+./apps-api/src/admin-plataforma/dto
+./apps-api/src/admin-plataforma/guards
+./apps-api/src/auth
+./apps-api/src/auth/dto
+./apps-api/src/auth/strategies
+./apps-api/src/empresas
+./apps-api/src/empresas/dto
+./apps-api/src/prisma
+./apps-api/src/usuarios
+./apps-api/test
+./apps-web
+./apps-web/app
+./apps-web/public
+./scripts
+
+### 2. ARQUIVOS DE CODIGO, CONFIGURACAO E TESTES
+./apps-api/.agents/skills/prisma-composer-core-concepts/SKILL.md
+./apps-api/.agents/skills/prisma-platform-core-concepts/SKILL.md
+./apps-api/.claude/skills/prisma-composer-core-concepts/SKILL.md
+./apps-api/.claude/skills/prisma-platform-core-concepts/SKILL.md
+./apps-api/.cursor/skills/prisma-composer-core-concepts/SKILL.md
+./apps-api/.cursor/skills/prisma-platform-core-concepts/SKILL.md
+./apps-api/.devin/skills/prisma-composer-core-concepts/SKILL.md
+./apps-api/.devin/skills/prisma-platform-core-concepts/SKILL.md
+./apps-api/.oxlintrc.json
+./apps-api/README.md
+./apps-api/apps-web/app/page.tsx
+./apps-api/nest-cli.json
+./apps-api/package.json
+./apps-api/pnpm-lock.yaml
+./apps-api/prisma.config.ts
+./apps-api/prisma/migrations/20261023222600_inicial/migration.sql
+./apps-api/prisma/migrations/20261024193019_adicionar_administrador_plataforma/migration.sql
+./apps-api/prisma/schema.prisma
+./apps-api/prismaschema.prisma
+./apps-api/scripts/consultar-admin-plataforma.mjs
+./apps-api/scripts/criar-admin-inicial.mjs
+./apps-api/scripts/criar-admin-plataforma.mjs
+./apps-api/scripts/criar-admin.mjs
+./apps-api/scripts/page-duplicada-backup.tsx
+./apps-api/src/admin-plataforma/admin-plataforma.controller.ts
+./apps-api/src/admin-plataforma/admin-plataforma.module.ts
+./apps-api/src/admin-plataforma/admin-plataforma.service.ts
+./apps-api/src/admin-plataforma/dto/login-admin-plataforma.dto.ts
+./apps-api/src/admin-plataforma/guards/admin-plataforma.guard.ts
+./apps-api/src/app.controller.spec.ts
+./apps-api/src/app.controller.ts
+./apps-api/src/app.module.ts
+./apps-api/src/app.service.ts
+./apps-api/src/auth/auth.controller.spec.ts
+./apps-api/src/auth/auth.controller.ts
+./apps-api/src/auth/auth.module.ts
+./apps-api/src/auth/auth.service.spec.ts
+./apps-api/src/auth/auth.service.ts
+./apps-api/src/auth/dto/login.dto.ts
+./apps-api/src/auth/strategies/jwt.strategy.spec.ts
+./apps-api/src/auth/strategies/jwt.strategy.ts
+./apps-api/src/empresas/dto/ativar-empresa.dto.ts
+./apps-api/src/empresas/dto/atualizar-empresa.dto.ts
+./apps-api/src/empresas/dto/criar-empresa.dto.ts
+./apps-api/src/empresas/dto/listar-empresas.dto.ts
+./apps-api/src/empresas/empresas.controller.spec.ts
+./apps-api/src/empresas/empresas.controller.ts
+./apps-api/src/empresas/empresas.module.ts
+./apps-api/src/empresas/empresas.service.spec.ts
+./apps-api/src/empresas/empresas.service.ts
+./apps-api/src/main.ts
+./apps-api/src/prisma/prisma.module.ts
+./apps-api/src/prisma/prisma.service.spec.ts
+./apps-api/src/prisma/prisma.service.ts
+./apps-api/src/usuarios/usuarios.controller.spec.ts
+./apps-api/src/usuarios/usuarios.controller.ts
+./apps-api/src/usuarios/usuarios.module.ts
+./apps-api/src/usuarios/usuarios.service.spec.ts
+./apps-api/src/usuarios/usuarios.service.ts
+./apps-api/test/app.e2e-spec.ts
+./apps-api/tsconfig.build.json
+./apps-api/tsconfig.json
+./apps-api/vitest.config.e2e.ts
+./apps-api/vitest.config.ts
+./apps-web/AGENTS.md
+./apps-web/README.md
+./apps-web/app/layout.tsx
+./apps-web/app/page.tsx
+./apps-web/eslint.config.mjs
+./apps-web/next-env.d.ts
+./apps-web/next.config.ts
+./apps-web/package.json
+./apps-web/pnpm-lock.yaml
+./apps-web/pnpm-workspace.yaml
+./apps-web/tsconfig.json
+./docker-compose.yml
+./scripts/testar-isolamento-tenant.mjs
+./scripts/testar-login-admin-plataforma.mjs
+
+### 3. SCRIPTS NPM DO BACKEND
+{
+  "name": "apps-api",
+  "scripts": {
+    "build": "nest build",
+    "deploy": "nest deploy",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "start": "nest start --env-file .env",
+    "start:dev": "nest start --watch --env-file .env",
+    "start:debug": "nest start --debug --watch --env-file .env",
+    "start:prod": "node dist/main",
+    "lint": "oxlint --type-aware src/ test/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "test:debug": "vitest --inspect-brk --no-file-parallelism",
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "postinstall": "prisma skills sync || exit 0"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/config": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/jwt": "^12.0.3",
+    "@nestjs/observe": "^0.3.0",
+    "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/swagger": "^12.0.3",
+    "@prisma/client": "^6.19.3",
+    "argon2": "^0.45.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "dotenv": "^18.0.9",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^12.0.0",
+    "@nestjs/mau": "^0.2.6",
+    "@nestjs/schematics": "^12.0.0",
+    "@nestjs/testing": "^12.0.1",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@types/supertest": "^7.0.0",
+    "@vitest/coverage-v8": "^4.1.2",
+    "oxlint": "^1.58.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "prettier": "^3.4.2",
+    "prisma": "6.19.3",
+    "source-map-support": "^0.5.21",
+    "supertest": "^7.0.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.2"
+  }
+}
+
+### 4. SCRIPTS NPM DO FRONTEND
+{
+  "name": "apps-web",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "next": "16.4.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.3",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+
+### 5. MODELOS DO PRISMA
+1:generator cliente {
+5:datasource db {
+11:enum PerfilAcesso {
+19:enum TipoMovimentacao {
+27:model Empresa {
+42:model Usuario {
+58:model Categoria {
+73:model Unidade {
+84:model Produto {
+112:model SaldoEstoque {
+126:model MovimentacaoEstoque {
+143:model AdministradorPlataforma {
+
+### 6. MIGRACOES DO BANCO
+apps-api/prisma/migrations/20261023222600_inicial/migration.sql
+apps-api/prisma/migrations/20261024193019_adicionar_administrador_plataforma/migration.sql
+
+### 7. STATUS DO GIT
+## feature/usuarios-autenticacao
+ M apps-api/prisma.config.ts
+ M apps-api/prisma/schema.prisma
+A  apps-api/scripts/criar-admin-inicial.mjs
+MM apps-api/src/app.module.ts
+A  apps-api/src/auth/auth.controller.spec.ts
+A  apps-api/src/auth/auth.controller.ts
+A  apps-api/src/auth/auth.module.ts
+AM apps-api/src/auth/auth.service.spec.ts
+A  apps-api/src/auth/auth.service.ts
+A  apps-api/src/auth/dto/login.dto.ts
+AM apps-api/src/auth/strategies/jwt.strategy.ts
+ M apps-api/src/empresas/empresas.controller.spec.ts
+ M apps-api/src/empresas/empresas.controller.ts
+ M apps-api/src/empresas/empresas.module.ts
+M  apps-api/src/main.ts
+A  apps-api/src/usuarios/usuarios.controller.spec.ts
+A  apps-api/src/usuarios/usuarios.controller.ts
+A  apps-api/src/usuarios/usuarios.module.ts
+A  apps-api/src/usuarios/usuarios.service.spec.ts
+A  apps-api/src/usuarios/usuarios.service.ts
+A  apps-web/.gitignore
+A  apps-web/AGENTS.md
+A  apps-web/README.md
+A  apps-web/app/favicon.ico
+A  apps-web/app/globals.css
+A  apps-web/app/layout.tsx
+A  apps-web/app/page.tsx
+A  apps-web/eslint.config.mjs
+A  apps-web/next.config.ts
+A  apps-web/package.json
+A  apps-web/pnpm-lock.yaml
+A  apps-web/pnpm-workspace.yaml
+A  apps-web/public/file.svg
+A  apps-web/public/globe.svg
+A  apps-web/public/next.svg
+A  apps-web/public/vercel.svg
+A  apps-web/public/window.svg
+A  apps-web/tsconfig.json
+?? apps-api/apps-web/
+?? apps-api/prisma/migrations/20261024193019_adicionar_administrador_plataforma/
+?? apps-api/scripts/consultar-admin-plataforma.mjs
+?? apps-api/scripts/criar-admin-plataforma.mjs
+?? apps-api/scripts/criar-admin.mjs
+?? apps-api/scripts/page-duplicada-backup.tsx
+?? apps-api/src/admin-plataforma/
+?? apps-api/src/auth/strategies/jwt.strategy.spec.ts
+?? inventario-projeto.txt
+?? scripts/
