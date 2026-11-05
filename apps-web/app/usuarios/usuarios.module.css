@@ -1,0 +1,130 @@
+/* Estilos exclusivos da gestão de usuários; não alteram outras telas. */
+.estrutura {
+  display: flex;
+  min-height: 100vh;
+  background: #f3f6fa;
+  color: #182637;
+}
+
+.conteudo {
+  min-width: 0;
+  flex: 1;
+  padding: 42px 38px 64px;
+}
+
+.largura { max-width: 1320px; margin: 0 auto; }
+
+.cabecalho, .secaoCabecalho, .paginacao, .acoesFormulario {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.cabecalho { margin-bottom: 26px; }
+.sobretitulo { color: #38679e; font-size: 11px; font-weight: 800; letter-spacing: .13em; }
+.cabecalho h1 { font-size: clamp(26px, 3vw, 36px); letter-spacing: -.04em; margin: 7px 0 8px; }
+.cabecalho p, .secaoCabecalho p { color: #667489; margin: 0; line-height: 1.5; }
+.secaoCabecalho { margin-bottom: 22px; align-items: flex-start; }
+.secaoCabecalho h2 { font-size: 19px; margin: 0 0 7px; }
+
+.resumo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 22px; }
+.indicador, .cartao { border: 1px solid #e2e8f0; border-radius: 15px; background: white; box-shadow: 0 4px 22px rgba(30, 50, 80, .035); }
+.indicador { padding: 22px 24px; }
+.indicador span { display: block; color: #617287; margin-bottom: 7px; font-size: 13px; }
+.indicador strong { font-size: 24px; letter-spacing: -.03em; }
+.cartao { padding: 25px; margin-bottom: 22px; }
+.cartao h2 { margin-top: 0; }
+.cartao > p { color: #627188; line-height: 1.5; }
+
+.botaoPrimario, .botaoSecundario, .botaoTexto {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.botaoPrimario { background: #183e70; color: #fff; border: 1px solid #183e70; border-radius: 9px; padding: 12px 17px; white-space: nowrap; }
+.botaoPrimario:hover:not(:disabled) { background: #26548b; }
+.botaoSecundario { color: #31435b; background: #fff; border: 1px solid #d2dce7; border-radius: 9px; padding: 11px 15px; white-space: nowrap; }
+.botaoSecundario:hover:not(:disabled) { background: #f3f6fa; }
+.botaoTexto { padding: 7px 6px; color: #21558d; background: transparent; border: 0; }
+.botaoTexto:hover:not(:disabled) { text-decoration: underline; }
+.botaoPrimario:disabled, .botaoSecundario:disabled, .botaoTexto:disabled { cursor: not-allowed; opacity: .55; }
+
+.gradeFormulario { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.campo { display: flex; flex-direction: column; gap: 8px; color: #40546c; font-size: 13px; font-weight: 650; min-width: 0; }
+.campo input, .campo select { width: 100%; min-width: 0; height: 42px; padding: 0 12px; color: #1f3247; background: #fff; border: 1px solid #cfd9e5; border-radius: 8px; font: inherit; font-weight: 400; outline-offset: 3px; }
+.campo input:focus, .campo select:focus { border-color: #2665a7; outline: 2px solid #c5daf3; }
+.observacao { font-size: 12px; color: #728097; margin: 14px 0 0; }
+.acoesFormulario { justify-content: flex-end; margin-top: 22px; }
+
+.filtros { display: grid; grid-template-columns: minmax(190px, 2fr) minmax(135px, 1fr) minmax(120px, 1fr) auto; align-items: end; gap: 14px; margin-bottom: 20px; }
+.acoesFiltro { display: flex; gap: 8px; }
+.rolagemTabela { width: 100%; overflow-x: auto; }
+.tabela { border-collapse: collapse; width: 100%; min-width: 665px; font-size: 13px; text-align: left; }
+.tabela thead { background: #f4f7fb; color: #596e86; }
+.tabela th { padding: 13px 15px; font-size: 12px; font-weight: 750; }
+.tabela td { padding: 15px; border-bottom: 1px solid #edf1f5; vertical-align: middle; }
+.tabela td:first-child strong { display: block; font-size: 13px; margin-bottom: 4px; }
+.email { display: block; color: #67788a; }
+.ativo, .inativo { display: inline-block; padding: 5px 10px; border-radius: 40px; font-weight: 700; font-size: 12px; }
+.ativo { background: #e7f5ec; color: #236a40; }
+.inativo { background: #f2f2f4; color: #68717b; }
+.acoesLinha { display: flex; align-items: center; gap: 12px; }
+.contaAtual { font-size: 12px; color: #728097; }
+.mensagemTabela { padding: 24px; text-align: center; color: #627188; }
+.paginacao { margin-top: 21px; color: #627188; font-size: 12px; }
+.paginacao > div { display: flex; gap: 8px; }
+.sucesso, .erro { padding: 13px 16px; border-radius: 9px; line-height: 1.45; font-size: 13px; margin: 0 0 18px; }
+.sucesso { color: #195f3c; background: #e7f6ed; border: 1px solid #b9e6cc; }
+.erro { color: #8f2331; background: #ffeff0; border: 1px solid #f0c9ce; }
+
+@media (max-width: 1100px) {
+  .filtros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .acoesFiltro { justify-content: flex-start; }
+  .conteudo { padding: 30px 24px 52px; }
+}
+
+@media (max-width: 730px) {
+  .estrutura { flex-direction: column; }
+  .conteudo { padding: 26px 15px 45px; }
+  .cabecalho { align-items: flex-start; flex-direction: column; }
+  .resumo, .gradeFormulario, .filtros { grid-template-columns: 1fr; }
+  .cartao { padding: 18px; }
+  .paginacao { flex-direction: column; align-items: flex-start; }
+}
+
+/* CORRECAO: largura do menu lateral na tela de usuarios */
+
+/*
+ * Impede que o menu ocupe toda a largura do layout.
+ * A regra afeta somente a página de usuários.
+ */
+@media (min-width: 731px) {
+  .estrutura > aside {
+    flex: 0 0 260px;
+    width: 260px;
+    min-width: 260px;
+    max-width: 260px;
+    box-sizing: border-box;
+  }
+
+  .estrutura > main {
+    flex: 1 1 0%;
+    min-width: 0;
+  }
+}
+
+/*
+ * Em telas pequenas, o menu respeita a largura disponível,
+ * sem forçar uma coluna lateral de 260 pixels.
+ */
+@media (max-width: 730px) {
+  .estrutura > aside {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}

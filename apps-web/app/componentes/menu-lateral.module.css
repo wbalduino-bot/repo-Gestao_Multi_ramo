@@ -1,0 +1,337 @@
+/*
+ * Estilos compartilhados do menu lateral.
+ * A identidade visual mantém o azul-marinho e os destaques azuis
+ * usados nas páginas atuais do sistema.
+ */
+
+.menuLateral,
+.menuLateral * {
+  box-sizing: border-box;
+}
+
+.menuLateral {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  min-width: 0;
+  width: 100%;
+  height: 100vh;
+  min-height: 100vh;
+  overflow-y: auto;
+
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+
+  padding: 28px 17px 20px;
+  color: #d6dfeb;
+  background: #10243a;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+}
+
+/* Identidade visual do sistema no topo da navegação. */
+.marca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 9px;
+  color: #fff;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.iconeMarca {
+  width: 43px;
+  height: 43px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #376ee0;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.textoMarca {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  letter-spacing: 1.7px;
+}
+
+.textoMarca strong {
+  font-weight: 800;
+}
+
+.textoMarca > span {
+  color: #9cafc7;
+  font-size: 10px;
+  letter-spacing: 2.7px;
+}
+
+/* Identificação da empresa informada pela própria página. */
+.empresa {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 10px;
+  border: 1px solid #2c425b;
+  border-radius: 10px;
+  background: #152d47;
+}
+
+.iconeEmpresa {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #29476a;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.dadosEmpresa {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dadosEmpresa strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dadosEmpresa small {
+  color: #91a4bd;
+  font-size: 10px;
+}
+
+/* Navegação vertical com os grupos de funcionalidades. */
+.navegacao {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.tituloSecao {
+  margin: 3px 0 8px;
+  padding: 0 11px;
+  color: #8ea1ba;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+}
+
+.itemMenu {
+  width: 100%;
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  color: #becbda;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-decoration: none;
+}
+
+a.itemMenu {
+  cursor: pointer;
+}
+
+a.itemMenu:hover {
+  background: #203b5a;
+  color: #fff;
+}
+
+.itemAtivo,
+a.itemMenu.itemAtivo:hover {
+  background: #2b5bc0;
+  color: #fff;
+  font-weight: 700;
+}
+
+.iconeItem {
+  width: 19px;
+  flex-shrink: 0;
+  text-align: center;
+  color: #aebfd4;
+  font-size: 18px;
+}
+
+.itemAtivo .iconeItem {
+  color: #fff;
+}
+
+.textoItem {
+  min-width: 0;
+}
+
+.itemDesabilitado {
+  cursor: default;
+  opacity: 0.78;
+}
+
+.emBreve {
+  margin-left: auto;
+  color: #96a9bf;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+/* Rodapé persistente: estado do ambiente e encerramento da sessão. */
+.rodape {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+  padding: 16px 10px 4px;
+  border-top: 1px solid #2c425b;
+}
+
+.ambiente {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #a6b6c9;
+  font-size: 10px;
+}
+
+.pontoOnline {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #54d49a;
+}
+
+.botaoSair {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid #344a63;
+  border-radius: 8px;
+  color: #c2cfde;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.botaoSair:hover {
+  border-color: #526b87;
+  background: #1c3652;
+  color: #fff;
+}
+
+.botaoSair:focus-visible,
+.marca:focus-visible,
+.itemMenu:focus-visible {
+  outline: 2px solid #8eb4ff;
+  outline-offset: 3px;
+}
+
+/* Em tablets, o menu ocupa o topo e a navegação pode rolar horizontalmente.
+   O botão Sair continua visível, ao contrário dos rodapés antigos. */
+@media (max-width: 980px) {
+  .menuLateral {
+    position: static;
+    top: auto;
+    align-self: stretch;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .navegacao {
+    flex-direction: row;
+    align-items: center;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 2px 2px 6px;
+  }
+
+  .tituloSecao {
+    display: none;
+  }
+
+  .itemMenu {
+    width: max-content;
+    min-height: 39px;
+    flex-shrink: 0;
+    padding: 0 10px;
+  }
+
+  .emBreve {
+    display: none;
+  }
+
+  .rodape {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 0;
+    padding: 12px 4px 0;
+  }
+
+  .botaoSair {
+    width: auto;
+    min-width: 120px;
+  }
+}
+
+/* Em celulares, conserva o acesso à saída sem alargar a página. */
+@media (max-width: 600px) {
+  .menuLateral {
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .marca {
+    padding: 0 2px;
+  }
+
+  .empresa {
+    padding: 10px 8px;
+  }
+
+  .navegacao {
+    margin-right: -4px;
+    margin-left: -4px;
+  }
+
+  .rodape {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .botaoSair {
+    width: 100%;
+  }
+}

@@ -20,7 +20,7 @@ import styles from "./dashboard.module.css";
 
 // Componentes compartilhados de proteção da sessão e encerramento local.
 import { ProtecaoSessao } from "../componentes/protecao-sessao";
-import { BotaoSair } from "../componentes/botao-sair";
+import { MenuLateral } from "../componentes/menu-lateral";
 
 // Mantém o endereço padrão utilizado também pela página de produtos.
 const API_URL =
@@ -175,6 +175,10 @@ const indicadores = [
     icone: "◉",
   },
   {
+    titulo: "Faturamento de hoje",
+    icone: "◷",
+  },
+  {
     titulo: "Produtos cadastrados",
     icone: "▤",
   },
@@ -186,6 +190,8 @@ export default function DashboardPage() {
     const router = useRouter();
   // Nome da empresa retornado pela API durante o login.
   const [nomeEmpresa, setNomeEmpresa] = useState("Empresa autenticada");
+  const [perfilUsuario, setPerfilUsuario] = useState<string | null>(null);
+  const [sessaoCarregada, setSessaoCarregada] = useState(false);
   const [resumoEstoque, setResumoEstoque] =
     useState<ResumoEstoqueDashboard | null>(null);
   const [carregandoResumo, setCarregandoResumo] = useState(true);
@@ -214,39 +220,60 @@ const [tentativaAnalise, setTentativaAnalise] = useState(0);
 const [criterioRanking, setCriterioRanking] =
   useState<"quantidade" | "faturamento">("quantidade");
 
+  // Somente administradores e gerentes visualizam dados financeiros.
+  const acessoGerencial =
+    perfilUsuario === "ADMINISTRADOR" || perfilUsuario === "GERENTE";
+
   /**
- * Recupera o nome da empresa salvo no login.
+ * Recupera o nome da empresa e o perfil salvos no login.
  * A leitura ocorre no navegador, após a montagem do componente.
  */
 useEffect(() => {
   try {
     const usuarioSalvo = sessionStorage.getItem("gestao.usuario");
 
-    if (!usuarioSalvo) {
-      return;
-    }
+    if (usuarioSalvo) {
+      const usuario = JSON.parse(usuarioSalvo) as {
+        empresaNome?: unknown;
+        perfil?: unknown;
+      };
 
-    const usuario = JSON.parse(usuarioSalvo) as {
-      empresaNome?: unknown;
-    };
+      if (
+        typeof usuario.empresaNome === "string" &&
+        usuario.empresaNome.trim().length > 0
+      ) {
+        setNomeEmpresa(usuario.empresaNome.trim());
+      }
 
-    if (
-      typeof usuario.empresaNome === "string" &&
-      usuario.empresaNome.trim().length > 0
-    ) {
-      setNomeEmpresa(usuario.empresaNome.trim());
+      if (typeof usuario.perfil === "string") {
+        setPerfilUsuario(usuario.perfil);
+      }
     }
   } catch {
-    // Mantém a identificação genérica se a sessão estiver inválida.
+    // Uma sessão inválida nunca habilita acesso gerencial.
     setNomeEmpresa("Empresa autenticada");
+    setPerfilUsuario(null);
+  } finally {
+    setSessaoCarregada(true);
   }
-  }, []);
+}, []);
 
   /**
  * Consulta as análises de pagamento e produtos vendidos.
  * A API identifica a empresa por meio do token autenticado.
  */
 useEffect(() => {
+  // Aguarda a identificação do perfil antes de consultar a API.
+  if (!sessaoCarregada) return;
+
+  // Funcionários não consultam o endpoint financeiro.
+  if (!acessoGerencial) {
+    setAnaliseDashboard(null);
+    setErroAnalise("");
+    setCarregandoAnalise(false);
+    return;
+  }
+
   let componenteAtivo = true;
   const controlador = new AbortController();
 
@@ -281,7 +308,7 @@ useEffect(() => {
       const dados: unknown = await resposta.json().catch(() => null);
 
       // Encerra a sessão local se a API rejeitar a autenticação.
-      if (resposta.status === 401 || resposta.status === 403) {
+      if (resposta.status === 401) {
         sessionStorage.removeItem("gestao.accessToken");
         sessionStorage.removeItem("gestao.usuario");
         router.replace("/");
@@ -377,13 +404,24 @@ useEffect(() => {
     componenteAtivo = false;
     controlador.abort();
   };
-}, [router, tentativaAnalise]);
+}, [router, tentativaAnalise, sessaoCarregada, acessoGerencial]);
 
   /**
    * Define os títulos e ícones dos indicadores do dashboard.
    * Os valores são preenchidos dinamicamente a partir das APIs.
    */
   useEffect(() => {
+    // Aguarda a leitura do perfil antes de consultar indicadores.
+    if (!sessaoCarregada) return;
+
+    // Perfis operacionais não consultam o resumo financeiro.
+    if (!acessoGerencial) {
+      setResumoVendas(null);
+      setErroVendas("");
+      setCarregandoVendas(false);
+      return;
+    }
+
     let componenteAtivo = true;
     const controlador = new AbortController();
 
@@ -416,7 +454,7 @@ useEffect(() => {
         const dados: unknown = await resposta.json().catch(() => null);
 
         // Encerra a sessão local quando a autenticação não é aceita.
-        if (resposta.status === 401 || resposta.status === 403) {
+        if (resposta.status === 401) {
           sessionStorage.removeItem("gestao.accessToken");
           sessionStorage.removeItem("gestao.usuario");
           router.replace("/");
@@ -514,7 +552,7 @@ useEffect(() => {
       componenteAtivo = false;
       controlador.abort();
     };
-  }, [router, tentativaVendas]);
+  }, [router, tentativaVendas, sessaoCarregada, acessoGerencial]);
 
 
   /**
@@ -557,7 +595,7 @@ useEffect(() => {
 
         const dados: unknown = await resposta.json().catch(() => null);
 
-        if (resposta.status === 401 || resposta.status === 403) {
+        if (resposta.status === 401) {
           sessionStorage.removeItem("gestao.accessToken");
           sessionStorage.removeItem("gestao.usuario");
           router.replace("/");
@@ -648,7 +686,7 @@ useEffect(() => {
           Partial<ResumoEstoqueDashboard> & ErroApiDashboard;
 
         // Token expirado ou acesso negado: encerra a sessão local.
-        if (resposta.status === 401 || resposta.status === 403) {
+        if (resposta.status === 401) {
           sessionStorage.removeItem("gestao.accessToken");
           sessionStorage.removeItem("gestao.usuario");
           router.replace("/");
@@ -747,7 +785,7 @@ useEffect(() => {
   // Atualiza os quatro cards sem alterar o layout existente.
   const indicadoresExibidos = indicadores.map((item, index) => {
     // O quarto card continua utilizando o resumo real do estoque.
-    if (index === 3) {
+    if (index === 4) {
       return {
         ...item,
         valor: resumoEstoque
@@ -781,6 +819,23 @@ useEffect(() => {
         valor: carregandoVendas ? "..." : "—",
         variacao: carregandoVendas ? "Consultando..." : "Indisponível",
         descricao,
+        variacaoClasse: styles.neutralText,
+      };
+    }
+
+    if (index === 3) {
+      const dias = resumoVendas.ultimosSeteDias;
+      const hoje = dias[dias.length - 1];
+      const faturamentoHoje = hoje?.faturamento ?? 0;
+      const quantidadeVendasHoje = hoje?.quantidadeVendas ?? 0;
+
+      return {
+        ...item,
+        valor: formatadorMoedaDashboard.format(faturamentoHoje),
+        variacao:
+          formatadorQuantidadeDashboard.format(quantidadeVendasHoje) +
+          (quantidadeVendasHoje === 1 ? " venda hoje" : " vendas hoje"),
+        descricao: "faturamento registrado hoje",
         variacaoClasse: styles.neutralText,
       };
     }
@@ -823,6 +878,12 @@ useEffect(() => {
       variacaoClasse: variacao.classe,
     };
   });
+
+  const indicadoresVisiveis = acessoGerencial
+    ? indicadoresExibidos
+    : indicadoresExibidos.filter(
+        (item) => item.titulo === "Produtos cadastrados",
+      );
 
   // Valores reais para o gráfico dos últimos sete dias.
   const diasVendas = resumoVendas?.ultimosSeteDias ?? [];
@@ -917,89 +978,7 @@ const maiorValorRankingProduto = Math.max(
   return (
     <ProtecaoSessao>
       <div className={styles.dashboard}>
-        {/* =====================================================
-            MENU LATERAL
-            ===================================================== */}
-        <aside className={styles.sidebar}>
-          <Link href="/dashboard" className={styles.brand}>
-            <span className={styles.brandIcon}>GC</span>
-            <span className={styles.brandText}>
-              <strong>GESTÃO</strong>
-              <span>COMERCIAL</span>
-            </span>
-          </Link>
-
-          {/* O nome da empresa ainda não é carregado nesta tela. */}
-          <div className={styles.company}>
-            <span className={styles.companyIcon}>
-              {nomeEmpresa.charAt(0).toUpperCase() || "G"}
-            </span>
-
-            <span className={styles.companyInfo}>
-              <strong>{nomeEmpresa}</strong>
-              <small>Empresa autenticada</small>
-            </span>
-            <span className={styles.chevron}>⌄</span>
-          </div>
-
-          <nav className={styles.navigation} aria-label="Menu principal">
-            <span className={styles.sectionTitle}>PRINCIPAL</span>
-
-            <Link
-              href="/dashboard"
-              className={`${styles.navItem} ${styles.navActive}`}
-              aria-current="page"
-            >
-              <span className={styles.navIcon}>▦</span>
-              Visão geral
-            </Link>
-
-            <Link href="/produtos" className={styles.navItem}>
-              <span className={styles.navIcon}>▤</span>
-              Produtos e estoque
-            </Link>
-
-             <Link href="/vendas" className={styles.navItem}>
-              <span className={styles.navIcon}>↗</span>
-              Vendas
-            </Link>
-            
-            <span className={styles.navItem} aria-disabled="true">
-              <span className={styles.navIcon}>▣</span>
-              Caixa
-              <small className={styles.comingSoon}>Em breve</small>
-            </span>
-            <span className={styles.navItem} aria-disabled="true">
-              <span className={styles.navIcon}>♧</span>
-              Clientes
-              <small className={styles.comingSoon}>Em breve</small>
-            </span>
-
-            <span className={styles.sectionTitle}>GESTÃO</span>
-            <span className={styles.navItem} aria-disabled="true">
-              <span className={styles.navIcon}>▥</span>
-              Relatórios
-              <small className={styles.comingSoon}>Em breve</small>
-            </span>
-            <span className={styles.navItem} aria-disabled="true">
-              <span className={styles.navIcon}>♙</span>
-              Usuários
-              <small className={styles.comingSoon}>Em breve</small>
-            </span>
-            <span className={styles.navItem} aria-disabled="true">
-              <span className={styles.navIcon}>⚙</span>
-              Configurações
-              <small className={styles.comingSoon}>Em breve</small>
-            </span>
-          </nav>
-
-          {/* O botão encerra a sessão local, conforme a implementação atual. */}
-          <div className={styles.sidebarFooter}>
-            <span className={styles.onlineDot} />
-            Ambiente de desenvolvimento
-            <BotaoSair className={styles.logout}>Sair da conta ↗</BotaoSair>
-          </div>
-        </aside>
+        <MenuLateral nomeEmpresa={nomeEmpresa} />
 
         {/* =====================================================
             ÁREA PRINCIPAL
@@ -1040,7 +1019,7 @@ const maiorValorRankingProduto = Math.max(
 
             {/* Cards superiores com indicadores reais de vendas e estoque. */}
             <section className={styles.metrics} aria-label="Indicadores">
-              {indicadoresExibidos.map((item, index) => (
+              {indicadoresVisiveis.map((item, index) => (
                 <article className={styles.metricCard} key={item.titulo}>
                   <div className={styles.metricTop}>
                     <span className={styles.metricTitle}>{item.titulo}</span>
@@ -1071,7 +1050,8 @@ const maiorValorRankingProduto = Math.max(
                    GRÁFICO DE VENDAS REAIS E RESUMO DE ESTOQUE
                 ================================================= */}
             <section className={styles.primaryGrid}>
-              {/* O módulo de vendas ainda não fornece dados reais. */}
+              {/* Gráfico financeiro restrito à gestão. */}
+              {acessoGerencial && (
               <article className={styles.panel}>
                 <div className={styles.panelHeader}>
                   <div>
@@ -1150,6 +1130,7 @@ const maiorValorRankingProduto = Math.max(
                     </button>
                   )}
               </article>
+              )}
 
               {/* Painel de estoque alimentado pelo resumo geral da API. */}
               <article className={styles.panel}>
@@ -1552,6 +1533,7 @@ const maiorValorRankingProduto = Math.max(
            {/* =====================================================
                 ANÁLISES COMERCIAIS: PAGAMENTOS E PRODUTOS
             ===================================================== */}
+            {acessoGerencial && (
             <section
               className={styles.analyticsGrid}
               aria-label="Análises comerciais"
@@ -1800,7 +1782,8 @@ const maiorValorRankingProduto = Math.max(
                     </p>
                   )}
               </article>
-            </section> 
+            </section>
+            )}
 
             {/* Atividades reais de movimentação de estoque. */}
             <section className={styles.panel}>

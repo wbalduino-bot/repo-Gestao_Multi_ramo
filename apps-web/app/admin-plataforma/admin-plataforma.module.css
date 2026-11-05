@@ -1,0 +1,187 @@
+/* Estilos exclusivos do painel SaaS: não alteram login nem páginas empresariais. */
+.loginPagina,
+.painelPagina {
+  min-height: 100vh;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #14283f;
+  background: #f3f6fb;
+}
+.loginPagina *, .painelPagina * { box-sizing: border-box; }
+.loginPagina { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(350px, 1fr); }
+.apresentacao { padding: clamp(30px, 5vw, 78px); background: linear-gradient(155deg, #102a46, #0b192b); color: #f7fbff; display: flex; flex-direction: column; justify-content: space-between; min-height: 100vh; }
+.marca { display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 15px; letter-spacing: .09em; }
+.marca small { display: block; font-weight: 500; font-size: 10px; letter-spacing: .22em; color: #a3bfd9; margin-top: 4px; }
+.marcaIcone { display: inline-flex; width: 46px; height: 46px; justify-content: center; align-items: center; flex: 0 0 46px; color: white; border-radius: 12px; font-size: 18px; background: #306bdc; }
+.etiqueta { color: #8ab7f2; font-weight: 800; letter-spacing: .17em; font-size: 11px; }
+.chamada h1 { font-size: clamp(36px, 4.3vw, 58px); line-height: 1.08; letter-spacing: -.04em; margin: 20px 0; }
+.chamada p { line-height: 1.7; max-width: 465px; color: #c3d4e4; }
+.rodapeMarca { font-size: 12px; color: #9bb4cc; }
+.loginLado { display: grid; place-items: center; padding: 32px; }
+.loginCard { width: 100%; max-width: 470px; background: white; padding: clamp(28px, 3vw, 46px); border-radius: 22px; box-shadow: 0 22px 65px #102a4612; border: 1px solid #e4eaf1; }
+.loginCard h2 { font-size: 28px; margin: 12px 0 10px; letter-spacing: -.03em; }
+.etiquetaClara { color: #3765ad; font-size: 11px; letter-spacing: .11em; font-weight: 800; }
+.mutado { color: #65788f; line-height: 1.55; margin: 7px 0 0; font-size: 14px; }
+.formulario { display: flex; flex-direction: column; margin-top: 28px; gap: 10px; }
+.formulario label, .campo label { font-size: 13px; font-weight: 700; color: #243b55; }
+.formulario input, .campo input, .acoesLista select { background: white; border: 1px solid #cbd6e3; border-radius: 10px; padding: 12px 13px; min-height: 45px; width: 100%; color: #14283f; font: inherit; font-size: 14px; }
+.formulario input:focus, .campo input:focus, .acoesLista select:focus { border-color: #2c6ad9; outline: 3px solid #2c6ad928; }
+.campoSenha { display: flex; position: relative; align-items: stretch; }
+.campoSenha input { padding-right: 94px; }
+.campoSenha button { position: absolute; right: 8px; top: 6px; bottom: 6px; border: 0; background: transparent; color: #2a5dac; font-size: 12px; cursor: pointer; }
+.botaoPrincipal { border: 0; border-radius: 10px; background: #2e61c7; color: #fff; font: inherit; font-weight: 750; padding: 13px 18px; cursor: pointer; min-height: 45px; white-space: nowrap; }
+.botaoPrincipal:hover { background: #214fabc9; }
+.botaoPrincipal:disabled, .botaoSecundario:disabled, .botaoPerigo:disabled { opacity: .55; cursor: not-allowed; }
+.formulario .botaoPrincipal { margin-top: 12px; }
+.aviso { color: #71859a; font-size: 12px; margin-top: 24px; }
+.mensagemErro { background: #fff0f0; color: #9a2936; border: 1px solid #f2cfd4; border-radius: 9px; padding: 12px 14px; font-size: 13px; margin: 15px 0 0; }
+.mensagemSucesso { color: #17614d; background: #eaf8f0; border: 1px solid #bfdfcb; border-radius: 9px; padding: 12px 14px; font-size: 13px; margin: 0 0 20px; }
+.cabecalho { background: #102a46; color: white; display: flex; align-items: center; justify-content: space-between; padding: 16px clamp(20px, 4vw, 60px); gap: 20px; }
+.cabecalhoDireito { display: flex; align-items: center; gap: 20px; }
+.nomeAdmin { color: #dce7f2; font-size: 13px; }
+.botaoSair { color: white; border: 1px solid #57718d; background: transparent; border-radius: 9px; padding: 10px 15px; cursor: pointer; }
+.botaoSair:hover { background: #244362; }
+.areaConteudo { max-width: 1350px; margin: 0 auto; padding: 34px clamp(20px, 4vw, 58px) 65px; }
+.topoPagina { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.topoPagina h1 { font-size: clamp(30px, 3.4vw, 40px); letter-spacing: -.04em; margin: 8px 0; }
+.contador { background: #e5edf9; padding: 14px 20px; min-width: 178px; border: 1px solid #d4e0ef; border-radius: 14px; display: flex; flex-direction: column; }
+.contador strong { font-size: 28px; color: #1a4eaa; }
+.contador small { color: #60758f; font-size: 11px; }
+.cartao { border-radius: 17px; background: white; border: 1px solid #e1e9f1; box-shadow: 0 5px 24px #102a4610; padding: 26px; margin-bottom: 24px; }
+.secaoTopo { display: flex; align-items: start; justify-content: space-between; gap: 20px; margin-bottom: 23px; }
+.secaoTopo h2 { margin: 0; font-size: 21px; letter-spacing: -.02em; }
+.formGrid { display: grid; gap: 18px; align-items: end; grid-template-columns: minmax(0,2fr) minmax(0,1.15fr) auto; }
+.campo { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.botaoCampo { display: flex; }
+.botaoSecundario, .botaoPerigo { font: inherit; font-size: 13px; font-weight: 650; background: #fff; border-radius: 9px; padding: 9px 12px; border: 1px solid #cbd7e6; color: #24509a; cursor: pointer; white-space: nowrap; }
+.botaoSecundario:hover { background: #f1f6ff; }
+.botaoPerigo { color: #ad3a42; border-color: #e9c9cd; }
+.botaoPerigo:hover { background: #fff2f2; }
+.acoesLista { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.acoesLista label { font-size: 13px; color: #63768a; }
+.acoesLista select { width: auto; min-width: 135px; padding: 9px 12px; min-height: 38px; }
+.tabelaRolagem { width: 100%; overflow-x: auto; }
+.tabela { border-collapse: collapse; width: 100%; min-width: 610px; text-align: left; }
+.tabela thead { background: #f5f8fc; color: #536880; }
+.tabela th { font-size: 12px; padding: 13px; }
+.tabela td { padding: 16px 13px; border-bottom: 1px solid #edf1f5; font-size: 14px; }
+.tabela td strong { font-size: 14px; }
+.ativo, .inativo { border-radius: 20px; display: inline-block; padding: 6px 10px; font-size: 11px; font-weight: 750; }
+.ativo { color: #14634b; background: #e0f7ec; }
+.inativo { color: #a1434c; background: #fbe9ed; }
+.acoesLinha { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.paginacao { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; gap: 12px; font-size: 13px; color: #60768e; }
+.vazio { padding: 35px 12px; background: #f7f9fd; text-align: center; color: #71849a; border-radius: 12px; }
+@media (max-width: 940px) {
+  .formGrid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .botaoCampo { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .loginPagina { grid-template-columns: 1fr; }
+  .apresentacao { min-height: auto; padding: 28px 22px; gap: 26px; }
+  .chamada h1 { font-size: 31px; margin: 12px 0; }
+  .rodapeMarca { display: none; }
+  .loginLado { padding: 20px 14px 40px; }
+  .loginCard { padding: 25px; }
+  .cabecalho { align-items: flex-start; }
+  .cabecalhoDireito { align-items: flex-end; flex-direction: column; gap: 8px; }
+  .nomeAdmin { font-size: 11px; }
+  .areaConteudo { padding: 26px 15px 45px; }
+  .topoPagina { align-items: start; }
+  .contador { min-width: 0; }
+  .cartao { padding: 19px; }
+  .secaoTopo { flex-direction: column; }
+}
+@media (max-width: 540px) {
+  .formGrid { grid-template-columns: 1fr; }
+  .topoPagina { flex-direction: column; }
+  .paginacao { flex-wrap: wrap; }
+}
+
+/* PROVISIONAMENTO SAAS: campos novos exclusivos da página de empresas. */
+.empresaCriada {
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #c4d9ef;
+  background: #f2f8ff;
+  border-radius: 14px;
+  padding: 18px;
+  margin: 0 0 20px;
+}
+.empresaCriada > div { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.empresaCriada strong { color: #183d6b; }
+.empresaCriada span { color: #536b86; font-size: 13px; }
+.identificadorCompleto { font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+.avisoCopia { font-size: 13px; color: #245189; margin: 0 0 12px; overflow-wrap: anywhere; }
+.blocoAdminsIniciais { grid-column: 1 / -1; border-top: 1px solid #e5eaf1; padding-top: 22px; }
+.tituloBlocoAdmin { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 14px; }
+.tituloBlocoAdmin h3, .adicionarAdminExistente h3 { font-size: 17px; margin: 0; }
+.formAdministrador {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;
+  align-items: end;
+  gap: 13px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #f7f9fc;
+  border: 1px solid #e2eaf4;
+  margin-top: 12px;
+}
+.botaoRemover {
+  border: 1px solid #e7c6cc;
+  border-radius: 9px;
+  background: #fff;
+  color: #9f3b45;
+  min-height: 45px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.botaoRemover:disabled { opacity: .4; cursor: not-allowed; }
+.avisoSenha { color: #6b7789; font-size: 12px; line-height: 1.6; margin: 14px 0 0; }
+.identificadorNaTabela { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+.identificadorNaTabela code { max-width: 250px; font-size: 11px; overflow-wrap: anywhere; user-select: all; }
+.identificadorNaTabela button { padding: 5px 9px; }
+.linhaSelecionada { background: #f0f6ff; }
+.adicionarAdminExistente { margin-top: 24px; border-top: 1px solid #e4eaf2; padding-top: 22px; }
+.formAdministradorExistente {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr)) auto;
+  align-items: end;
+  gap: 13px;
+  margin-top: 17px;
+}
+.tabela { min-width: 860px; }
+@media (max-width: 1050px) {
+  .formAdministrador, .formAdministradorExistente { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .botaoRemover, .formAdministradorExistente > button { justify-self: start; }
+}
+@media (max-width: 590px) {
+  .formAdministrador, .formAdministradorExistente { grid-template-columns: 1fr; }
+  .empresaCriada { flex-direction: column; align-items: flex-start; }
+  .tituloBlocoAdmin { align-items: flex-start; }
+}
+
+
+/* Central de Auditoria: classes exclusivas do painel SaaS. */
+.auditoriaIndicadores { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; margin-bottom: 24px; }
+.auditoriaIndicador { display: flex; flex-direction: column; gap: 7px; border: 1px solid #dfe8f2; border-radius: 14px; background: #fff; padding: 20px 24px; }
+.auditoriaIndicador span { font-size: 13px; color: #60758f; }
+.auditoriaIndicador strong { font-size: 30px; color: #183f75; }
+.auditoriaFiltros { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; align-items: end; }
+.auditoriaFiltros select { border: 1px solid #cbd6e3; background: #fff; border-radius: 10px; padding: 12px 13px; min-height: 45px; width: 100%; color: #14283f; font: inherit; font-size: 14px; }
+.auditoriaFiltros select:focus { border-color: #2c6ad9; outline: 3px solid #2c6ad928; }
+.auditoriaAcoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.auditoriaDetalhes { border: 1px solid #d7e4f1; background: #f7faff; border-radius: 12px; margin: 20px 0; padding: 19px; }
+.auditoriaDetalhes h3 { font-size: 16px; margin: 0 0 15px; }
+.auditoriaDetalhesGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px 20px; margin: 0; }
+.auditoriaDetalhesGrid dt { font-size: 12px; color: #587088; margin-bottom: 5px; }
+.auditoriaDetalhesGrid dd { margin: 0; font-size: 13px; color: #173451; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .auditoriaFiltros { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 630px) {
+  .auditoriaFiltros, .auditoriaIndicadores, .auditoriaDetalhesGrid { grid-template-columns: 1fr; }
+  .auditoriaIndicador { padding: 15px 18px; }
+  .cabecalhoDireito { flex-wrap: wrap; }
+}

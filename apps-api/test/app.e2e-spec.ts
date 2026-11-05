@@ -2,6 +2,11 @@
 import { randomUUID } from 'node:crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import {
+  Prisma,
+  ResultadoAuditoria,
+  TipoAtorAuditoria,
+} from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import * as argon2 from 'argon2';
@@ -9,40 +14,59 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from './../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { configurarAplicacao } from '../src/configurar-aplicacao.js';
 
 /**
- * Testes E2E da aplicação, autenticação, produtos e estoque.
+ * Testes E2E da aplicação, autenticação, auditoria, produtos e estoque.
  *
  * Os testes utilizam:
  * - A aplicação NestJS real.
  * - As rotas HTTP protegidas por autenticação.
  * - O PostgreSQL exclusivo para testes.
+ * - A consulta direta dos eventos persistidos na tabela EventoAuditoria.
  *
  * Cenários validados:
  * - Autenticação e isolamento entre empresas.
+ * - Registro de auditoria em logins empresariais.
+ * - Registro de auditoria em logins administrativos.
  * - Cadastro, consulta, atualização e desativação de produtos.
  * - Entrada, saída e ajustes de estoque.
  * - Bloqueio de saídas que ultrapassam o saldo disponível.
  * - Histórico paginado de movimentações.
- * - Limpeza dos registros criados durante a execução.
+ * - Limpeza exclusiva dos registros criados durante esta execução.
  */
-describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
+describe('Aplicação, autenticação, auditoria, produtos e estoque (e2e)', () => {
   let app: INestApplication<App> | undefined;
   let prisma: PrismaService | undefined;
 
   // Registra somente os IDs criados por esta execução da suíte.
   const empresasCriadas: string[] = [];
   const usuariosCriados: string[] = [];
+  const administradoresCriados: string[] = [];
   const produtosCriados: string[] = [];
   const vendasCriadas: string[] = [];
+
+  /**
+   * Guarda os IDs dos eventos anônimos criados diretamente
+   * pelos testes, pois esses eventos não possuem atorId ou empresaId
+   * em todos os cenários.
+   *
+   * Os demais eventos dos usuários e empresas de teste serão
+   * removidos pelos respectivos identificadores de origem.
+   */
+  const eventosAuditoriaCriados: string[] = [];
 
   const senhaTeste = 'SenhaE2E_2026!';
 
   let empresaAId: string;
   let empresaBId: string;
 
+  let usuarioAId: string;
+  let administradorPlataformaId: string;
+
   let usuarioAEmail: string;
   let usuarioBEmail: string;
+  let administradorEmail: string;
 
   /**
    * Impede que os testes sejam executados contra o banco principal
@@ -62,12 +86,12 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
 
     if (
       url.hostname !== '127.0.0.1' ||
-      url.port !== '5432' ||
+      url.port !== '5435' ||
       banco !== 'gestao_test'
     ) {
       throw new Error(
         'E2E interrompido: a conexão precisa apontar para ' +
-          '127.0.0.1:5432/gestao_test.',
+          '127.0.0.1:5435/gestao_test.',
       );
     }
   }
@@ -86,6 +110,7 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
       }).compile();
 
     app = moduleFixture.createNestApplication();
+    configurarAplicacao(app); // mesma validação global da produção
     await app.init();
 
     prisma = app.get(PrismaService);
@@ -95,6 +120,7 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
 
     usuarioAEmail = `e2e-a-${sufixo}@exemplo.com`;
     usuarioBEmail = `e2e-b-${sufixo}@exemplo.com`;
+    administradorEmail = `e2e-admin-${sufixo}@exemplo.com`;
 
     // Cria a primeira empresa utilizada nos testes.
     const empresaA = await prisma.empresa.create({
@@ -134,6 +160,7 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
     });
 
     usuariosCriados.push(usuarioA.id);
+    usuarioAId = usuarioA.id;
 
     // Cria outro usuário, vinculado à segunda empresa.
     const usuarioB = await prisma.usuario.create({
@@ -148,6 +175,27 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
     });
 
     usuariosCriados.push(usuarioB.id);
+
+    /**
+     * CRIAÇÃO DO ADMINISTRADOR EXCLUSIVO DOS TESTES
+     *
+     * O administrador é criado diretamente no banco de testes,
+     * utilizando uma senha com hash Argon2 real.
+     *
+     * Esse registro permite testar a rota administrativa real
+     * sem depender de contas administrativas existentes no banco.
+     */
+    const administrador = await prisma.administradorPlataforma.create({
+      data: {
+        nome: 'Administrador E2E',
+        email: administradorEmail,
+        hashSenha,
+        ativo: true,
+      },
+    });
+
+    administradoresCriados.push(administrador.id);
+    administradorPlataformaId = administrador.id;
   });
 
   // ============================================================
@@ -160,7 +208,77 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
         return;
       }
 
-            /*
+      /**
+       * LIMPEZA DA AUDITORIA
+       *
+       * A tabela EventoAuditoria não possui chaves estrangeiras
+       * obrigatórias para empresas e atores.
+       *
+       * Por isso, os eventos precisam ser removidos explicitamente
+       * antes da exclusão dos registros utilizados pelos testes.
+       *
+       * Os filtros abaixo utilizam exclusivamente:
+       * - IDs dos usuários criados pela suíte.
+       * - IDs dos administradores criados pela suíte.
+       * - IDs das empresas criadas pela suíte, somente para eventos
+       *   anônimos de login empresarial.
+       * - IDs específicos dos eventos anônimos administrativos.
+       *
+       * Não existe exclusão global ou remoção de auditoria preexistente.
+       */
+      const atoresCriados = [
+        ...usuariosCriados,
+        ...administradoresCriados,
+      ];
+
+      const filtrosAuditoria: Prisma.EventoAuditoriaWhereInput[] = [];
+
+      // Remove os eventos atribuídos aos usuários e administradores de teste.
+      if (atoresCriados.length > 0) {
+        filtrosAuditoria.push({
+          atorId: {
+            in: atoresCriados,
+          },
+        });
+      }
+
+      /**
+       * Remove somente as tentativas anônimas de login empresarial
+       * relacionadas às empresas criadas por esta execução.
+       *
+       * Outras categorias de eventos e empresas são preservadas.
+       */
+      if (empresasCriadas.length > 0) {
+        filtrosAuditoria.push({
+          empresaId: {
+            in: empresasCriadas,
+          },
+          atorId: null,
+          tipoAtor: TipoAtorAuditoria.ANONIMO,
+          modulo: 'AUTH',
+          acao: 'LOGIN',
+        });
+      }
+
+      // Inclui os eventos anônimos administrativos identificados individualmente.
+      if (eventosAuditoriaCriados.length > 0) {
+        filtrosAuditoria.push({
+          id: {
+            in: eventosAuditoriaCriados,
+          },
+        });
+      }
+
+      // Executa a limpeza somente quando existem filtros específicos.
+      if (filtrosAuditoria.length > 0) {
+        await prisma.eventoAuditoria.deleteMany({
+          where: {
+            OR: filtrosAuditoria,
+          },
+        });
+      }
+
+      /*
        * Remove primeiro os itens e as vendas criadas pelos testes.
        * A ordem respeita as chaves estrangeiras do banco.
        */
@@ -181,6 +299,7 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
           },
         });
       }
+
       /**
        * Remove os registros dependentes antes dos produtos.
        *
@@ -189,7 +308,8 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
        * 2. Saldos de estoque.
        * 3. Produtos.
        * 4. Usuários.
-       * 5. Empresas.
+       * 5. Administradores.
+       * 6. Empresas.
        *
        * Os filtros utilizam exclusivamente os IDs registrados
        * pelos testes desta execução.
@@ -232,7 +352,18 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
         });
       }
 
-      // 5. Remove as empresas criadas durante esta execução.
+      // 5. Remove o administrador temporário criado para os testes.
+      if (administradoresCriados.length > 0) {
+        await prisma.administradorPlataforma.deleteMany({
+          where: {
+            id: {
+              in: administradoresCriados,
+            },
+          },
+        });
+      }
+
+      // 6. Remove as empresas criadas durante esta execução.
       if (empresasCriadas.length > 0) {
         await prisma.empresa.deleteMany({
           where: {
@@ -317,16 +448,16 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
   }
+
   /**
    * Prepara uma requisição de movimentação de estoque pela API.
    *
    * A função retorna diretamente o objeto do Supertest para permitir
    * encadear .expect(201), .expect(400), .expect(404) e outras
    * verificações de resposta nos testes.
+   *
    * O tipo, a quantidade e o motivo são enviados pelo corpo da
    * requisição. A empresa e o usuário vêm do token autenticado.
-   *
-   * A empresa e o usuário responsável são definidos pelo token JWT.
    */
   function movimentarEstoquePelaApi(
     token: string,
@@ -344,8 +475,9 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
       .send(dados);
   }
 
-    /**
+  /**
    * Envia uma venda pela API com o usuário autenticado.
+   *
    * O backend deve calcular preços e total a partir do cadastro.
    */
   function criarVendaPelaApi(
@@ -367,6 +499,23 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
       .post('/vendas')
       .set('Authorization', `Bearer ${token}`)
       .send(dados);
+  }
+
+  /**
+   * Consulta o evento mais recente que corresponde aos filtros fornecidos.
+   *
+   * É utilizado pelos testes para conferir a persistência real da auditoria,
+   * sem depender somente de mocks do serviço.
+   */
+  async function buscarEventoAuditoria(
+    where: Prisma.EventoAuditoriaWhereInput,
+  ) {
+    return prisma!.eventoAuditoria.findFirst({
+      where,
+      orderBy: {
+        criadoEm: 'desc',
+      },
+    });
   }
 
   // ============================================================
@@ -411,6 +560,261 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
 
     expect(respostaUsuario.body.empresaId).toBe(empresaBId);
     expect(respostaUsuario.body.empresaId).not.toBe(empresaAId);
+  });
+
+  // ============================================================
+  // AUDITORIA REAL DE AUTENTICAÇÃO
+  // ============================================================
+
+  /**
+   * Confirma que um login empresarial realizado pela API
+   * gera um evento persistido no PostgreSQL.
+   *
+   * O evento deve identificar o usuário e sua empresa,
+   * utilizar USUARIO_EMPRESA e possuir resultado SUCESSO.
+   */
+  it('deve persistir auditoria após login empresarial bem-sucedido', async () => {
+    const inicio = new Date();
+
+    const resposta = await request(app!.getHttpServer())
+      .post('/auth/login')
+      .send({
+        empresaId: empresaAId,
+        email: usuarioAEmail,
+        senha: senhaTeste,
+      })
+      .expect(200);
+
+    expect(resposta.body.accessToken).toEqual(
+      expect.any(String),
+    );
+
+    // Consulta diretamente a tabela EventoAuditoria.
+    const evento = await buscarEventoAuditoria({
+      empresaId: empresaAId,
+      atorId: usuarioAId,
+      tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+      modulo: 'AUTH',
+      acao: 'LOGIN',
+      resultado: ResultadoAuditoria.SUCESSO,
+      criadoEm: {
+        gte: inicio,
+      },
+    });
+
+    expect(evento).not.toBeNull();
+
+    expect(evento).toMatchObject({
+      empresaId: empresaAId,
+      atorId: usuarioAId,
+      tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+      modulo: 'AUTH',
+      acao: 'LOGIN',
+      resultado: ResultadoAuditoria.SUCESSO,
+    });
+
+    // Registra o ID para limpeza explícita ao final da suíte.
+    eventosAuditoriaCriados.push(evento!.id);
+  });
+
+  /**
+   * Confirma que uma senha incorreta gera um evento anônimo de falha.
+   *
+   * A tentativa não pode ser atribuída ao usuário, pois a autenticação
+   * não foi concluída.
+   *
+   * O evento pode conter empresaId como referência informada na tentativa,
+   * mas não pode conter atorId.
+   */
+  it('deve persistir auditoria anônima após falha no login empresarial', async () => {
+    const inicio = new Date();
+
+    await request(app!.getHttpServer())
+      .post('/auth/login')
+      .send({
+        empresaId: empresaAId,
+        email: usuarioAEmail,
+        senha: 'SenhaIncorreta_E2E!',
+      })
+      .expect(401);
+
+    // Busca somente o evento anônimo de falha criado neste cenário.
+    const evento = await buscarEventoAuditoria({
+      empresaId: empresaAId,
+      atorId: null,
+      tipoAtor: TipoAtorAuditoria.ANONIMO,
+      modulo: 'AUTH',
+      acao: 'LOGIN',
+      resultado: ResultadoAuditoria.FALHA,
+      criadoEm: {
+        gte: inicio,
+      },
+    });
+
+    expect(evento).not.toBeNull();
+
+    expect(evento).toMatchObject({
+      empresaId: empresaAId,
+      atorId: null,
+      tipoAtor: TipoAtorAuditoria.ANONIMO,
+      modulo: 'AUTH',
+      acao: 'LOGIN',
+      resultado: ResultadoAuditoria.FALHA,
+      motivo: 'Tentativa de autenticação recusada.',
+    });
+
+    // Confirma que dados de autenticação não foram gravados no evento.
+    const conteudoEvento = JSON.stringify(evento);
+
+    expect(conteudoEvento).not.toContain(usuarioAEmail);
+    expect(conteudoEvento).not.toContain('SenhaIncorreta_E2E!');
+
+    // Registra o evento para limpeza e evita acumular dados de teste.
+    eventosAuditoriaCriados.push(evento!.id);
+  });
+
+  /**
+   * Confirma que o login administrativo gera um evento persistido
+   * com o administrador real já validado.
+   *
+   * O evento não deve possuir empresaId porque o administrador
+   * pertence ao contexto global da plataforma.
+   */
+  it('deve persistir auditoria após login administrativo bem-sucedido', async () => {
+    const inicio = new Date();
+
+    const resposta = await request(app!.getHttpServer())
+      .post('/admin-plataforma/login')
+      .send({
+        email: administradorEmail,
+        senha: senhaTeste,
+      })
+      .expect(200);
+
+    expect(resposta.body.accessToken).toEqual(
+      expect.any(String),
+    );
+
+    const evento = await buscarEventoAuditoria({
+      empresaId: null,
+      atorId: administradorPlataformaId,
+      tipoAtor: TipoAtorAuditoria.ADMIN_PLATAFORMA,
+      modulo: 'ADMIN_PLATAFORMA',
+      acao: 'LOGIN',
+      resultado: ResultadoAuditoria.SUCESSO,
+      criadoEm: {
+        gte: inicio,
+      },
+    });
+
+    expect(evento).not.toBeNull();
+
+    expect(evento).toMatchObject({
+      empresaId: null,
+      atorId: administradorPlataformaId,
+      tipoAtor: TipoAtorAuditoria.ADMIN_PLATAFORMA,
+      modulo: 'ADMIN_PLATAFORMA',
+      acao: 'LOGIN',
+      resultado: ResultadoAuditoria.SUCESSO,
+    });
+
+    eventosAuditoriaCriados.push(evento!.id);
+  });
+
+  /**
+   * Confirma que uma tentativa administrativa recusada gera
+   * um evento anônimo de falha, sem vínculo com empresa ou ator.
+   *
+   * Como eventos anônimos administrativos não possuem empresaId
+   * nem atorId, o teste captura os IDs existentes antes da tentativa
+   * e identifica exclusivamente o novo evento criado.
+   *
+   * Isso evita remover eventos administrativos preexistentes.
+   */
+  it('deve persistir auditoria anônima após falha no login administrativo', async () => {
+    const filtroEvento = {
+      empresaId: null,
+      atorId: null,
+      tipoAtor: TipoAtorAuditoria.ANONIMO,
+      modulo: 'ADMIN_PLATAFORMA',
+      acao: 'LOGIN',
+      resultado: ResultadoAuditoria.FALHA,
+    };
+
+    // Guarda os IDs existentes antes da tentativa.
+    const eventosAntes = await prisma!.eventoAuditoria.findMany({
+      where: filtroEvento,
+      select: {
+        id: true,
+      },
+    });
+
+    const idsAnteriores = new Set(
+      eventosAntes.map((evento) => evento.id),
+    );
+
+    const inicio = new Date();
+
+    await request(app!.getHttpServer())
+      .post('/admin-plataforma/login')
+      .send({
+        email: administradorEmail,
+        senha: 'SenhaIncorreta_Admin_E2E!',
+      })
+      .expect(401);
+
+    // Consulta os eventos criados depois do início desta tentativa.
+    const eventosDepois = await prisma!.eventoAuditoria.findMany({
+      where: {
+        ...filtroEvento,
+        criadoEm: {
+          gte: inicio,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    // Identifica somente os IDs que não existiam antes do teste.
+    const novosEventos = eventosDepois.filter(
+      (evento) => !idsAnteriores.has(evento.id),
+    );
+
+    // Uma única tentativa deve gerar exatamente um novo evento.
+    expect(novosEventos).toHaveLength(1);
+
+    const eventoId = novosEventos[0].id;
+
+    // Guarda o identificador para limpeza segura no afterAll.
+    eventosAuditoriaCriados.push(eventoId);
+
+    // Consulta o evento completo para conferir todos os campos.
+    const evento = await prisma!.eventoAuditoria.findUnique({
+      where: {
+        id: eventoId,
+      },
+    });
+
+    expect(evento).not.toBeNull();
+
+    expect(evento).toMatchObject({
+      empresaId: null,
+      atorId: null,
+      tipoAtor: TipoAtorAuditoria.ANONIMO,
+      modulo: 'ADMIN_PLATAFORMA',
+      acao: 'LOGIN',
+      resultado: ResultadoAuditoria.FALHA,
+      motivo: 'Tentativa de autenticação recusada.',
+    });
+
+    // Confirma que nenhum dado da credencial foi armazenado.
+    const conteudoEvento = JSON.stringify(evento);
+
+    expect(conteudoEvento).not.toContain(administradorEmail);
+    expect(conteudoEvento).not.toContain(
+      'SenhaIncorreta_Admin_E2E!',
+    );
   });
 
   it('deve rejeitar um token quando o vínculo do usuário muda', async () => {
@@ -611,7 +1015,7 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
       },
     ).expect(201);
 
-    // Confirma o tipo, a quantidade, o saldo e a auditoria.
+    // Confirma o tipo, a quantidade, o saldo e a auditoria operacional.
     expect(resposta.body.tipo).toBe('ENTRADA');
     expect(Number(resposta.body.quantidade)).toBe(10);
     expect(Number(resposta.body.saldoApos)).toBe(10);
@@ -811,7 +1215,7 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
     expect(resposta.body.totalPaginas).toBe(2);
     expect(resposta.body.dados).toHaveLength(1);
 
-    // Confirma que o histórico inclui informações de auditoria.
+    // Confirma que o histórico inclui informações de auditoria operacional.
     expect(resposta.body.dados[0]).toEqual(
       expect.objectContaining({
         empresaId: empresaAId,
@@ -823,7 +1227,10 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
     );
   });
 
-  
+  // ============================================================
+  // VENDAS
+  // ============================================================
+
   it('deve registrar uma venda e baixar o estoque pela API', async () => {
     const token = await obterToken(empresaAId, usuarioAEmail);
 
@@ -888,6 +1295,41 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
     expect(movimentacao).not.toBeNull();
     expect(Number(movimentacao!.quantidade.toString())).toBe(2);
     expect(Number(movimentacao!.saldoApos.toString())).toBe(8);
+
+    // Confirma a persistência real da auditoria da venda.
+    const eventoAuditoria = await buscarEventoAuditoria({
+      empresaId: empresaAId,
+      atorId: usuarioAId,
+      tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+      modulo: 'VENDAS',
+      acao: 'CRIAR',
+      entidade: 'VENDA',
+      entidadeId: resposta.body.id,
+      resultado: ResultadoAuditoria.SUCESSO,
+    });
+
+    expect(eventoAuditoria).not.toBeNull();
+    expect(eventoAuditoria).toMatchObject({
+      empresaId: empresaAId,
+      atorId: usuarioAId,
+      tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+      modulo: 'VENDAS',
+      acao: 'CRIAR',
+      entidade: 'VENDA',
+      entidadeId: resposta.body.id,
+      resultado: ResultadoAuditoria.SUCESSO,
+      dadosPosteriores: {
+        formaPagamento: 'PIX',
+        quantidadeItens: 1,
+      },
+      metadados: {
+        quantidadeProdutos: 1,
+        estoqueBaixado: true,
+      },
+    });
+
+    // Permite que o afterAll remova somente este evento de auditoria.
+    eventosAuditoriaCriados.push(eventoAuditoria!.id);
   });
 
   it('deve rejeitar venda com estoque insuficiente sem alterar o saldo', async () => {
@@ -991,7 +1433,7 @@ describe('Aplicação, autenticação, produtos e estoque (e2e)', () => {
     expect(Number(saldo?.quantidadeDisponivel.toString())).toBe(4);
   });
 
-    it('deve listar vendas paginadas e consultar seus detalhes', async () => {
+  it('deve listar vendas paginadas e consultar seus detalhes', async () => {
     const token = await obterToken(empresaAId, usuarioAEmail);
 
     const produto = await criarProdutoPelaApi(

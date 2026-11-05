@@ -18,7 +18,6 @@
  * - O backend permanece responsável pelas validações definitivas.
  */
 
-import Link from "next/link";
 import {
   useEffect,
   useMemo,
@@ -29,6 +28,7 @@ import {
 import { useRouter } from "next/navigation";
 import styles from "./produtos.module.css";
 import { ProtecaoSessao } from "../componentes/protecao-sessao";
+import { MenuLateral } from "../componentes/menu-lateral";
 
 // Endereço do backend, configurável pelo ambiente.
 const API_URL =
@@ -44,7 +44,7 @@ type ProdutoApi = {
   categoriaId: string | null;
   unidadeId: string | null;
   preco: number | string;
-  custo: number | string;
+  custo?: number | string;
   perecivel: boolean;
   peso: number | string | null;
   ativo: boolean;
@@ -70,6 +70,16 @@ type RespostaListagem = {
 type RespostaApi = RespostaListagem & {
   message?: string | string[];
   error?: string;
+};
+
+/** Indicadores globais retornados pela API para a empresa autenticada. */
+type ResumoGeralProdutos = {
+  totalProdutos: number;
+  produtosAtivos: number;
+  produtosInativos: number;
+  estoqueCritico: number;
+  semEstoque: number;
+  semSaldo: number;
 };
 
 /** Tipos de movimentação que a tela permite registrar manualmente. */
@@ -98,12 +108,28 @@ type RespostaHistorico = {
   error?: string;
 };
 
+/* INTEGRACAO CATEGORIAS UNIDADES PRODUTOS V1 */
+/** Cadastros auxiliares pertencentes à empresa da sessão autenticada. */
+type CategoriaCadastro = { id: string; nome: string; categoriaPaiId?: string | null };
+type UnidadeCadastro = { id: string; codigo: string; nome: string };
+
+type RespostaCadastros<T> = T[] | { dados: T[] };
+
+/** Aceita retorno simples ou envelopado sem inventar registros. */
+function extrairCadastros<T>(resposta: RespostaCadastros<T>): T[] {
+  if (Array.isArray(resposta)) return resposta;
+  if (resposta && Array.isArray(resposta.dados)) return resposta.dados;
+  throw new Error("Formato inesperado dos cadastros auxiliares.");
+}
+
 /** Campos do formulário de cadastro de produtos. */
 type FormularioProduto = {
   nome: string;
   sku: string;
   descricao: string;
   codigoBarras: string;
+  categoriaId: string;
+  unidadeId: string;
   preco: string;
   custo: string;
   quantidadeInicial: string;
@@ -116,6 +142,8 @@ const formularioVazio: FormularioProduto = {
   sku: "",
   descricao: "",
   codigoBarras: "",
+  categoriaId: "",
+  unidadeId: "",
   preco: "",
   custo: "",
   quantidadeInicial: "0",
@@ -306,9 +334,22 @@ export default function ProdutosPage() {
   // Dados, pesquisa e paginação da listagem de produtos.
   const [produtos, setProdutos] = useState<ProdutoApi[]>([]);
   const [total, setTotal] = useState(0);
+  // Indicadores independentes da pesquisa e da paginação.
+  const [resumoGeral, setResumoGeral] = useState<ResumoGeralProdutos | null>(null);
+  const [carregandoResumo, setCarregandoResumo] = useState(true);
+  const [erroResumo, setErroResumo] = useState("");
   const [pagina, setPagina] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
   const [pesquisa, setPesquisa] = useState("");
+
+  // Filtros da listagem, independentes do formulário de cadastro.
+  const [categoriaSelecionada, setCategoriaSelecionada] = useState("");
+  const [situacaoSelecionada, setSituacaoSelecionada] = useState("TODOS");
+
+  // Estado do estoque selecionado na listagem.
+  // TODOS preserva o comportamento original da consulta.
+  const [estadoEstoqueSelecionado, setEstadoEstoqueSelecionado] =
+    useState("TODOS");
   const [carregando, setCarregando] = useState(true);
   const [erroCarregamento, setErroCarregamento] = useState("");
   
@@ -319,9 +360,131 @@ export default function ProdutosPage() {
     ...formularioVazio,
   });
   const [erroFormulario, setErroFormulario] = useState("");
+  const [categoriasCadastro, setCategoriasCadastro] = useState<CategoriaCadastro[]>([]);
+
+  // Categorias utilizadas exclusivamente pelo filtro da listagem.
+  const [categoriasFiltro, setCategoriasFiltro] = useState<CategoriaCadastro[]>([]);
+  const [carregandoCategoriasFiltro, setCarregandoCategoriasFiltro] = useState(true);
+  const [erroCategoriasFiltro, setErroCategoriasFiltro] = useState("");
+  const [unidadesCadastro, setUnidadesCadastro] = useState<UnidadeCadastro[]>([]);
+  const [carregandoCadastros, setCarregandoCadastros] = useState(false);
+  const [erroCadastros, setErroCadastros] = useState("");
+
+  /*
+   * Carrega as categorias da empresa autenticada para o filtro.
+   *
+   * Não depende da abertura do formulário de cadastro e não
+   * consulta unidades desnecessariamente.
+   */
+  useEffect(() => {
+    let ativo = true;
+    const controlador = new AbortController();
+
+    async function carregarCategoriasFiltro() {
+      const token = sessionStorage.getItem("gestao.accessToken");
+
+      if (!token) {
+        if (ativo) {
+          setCarregandoCategoriasFiltro(false);
+          setErroCategoriasFiltro("Sessão não encontrada.");
+        }
+        return;
+      }
+
+      try {
+        const resposta = await fetch(`${API_URL}/categorias`, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+          signal: controlador.signal,
+        });
+
+        if (!resposta.ok) {
+          throw new Error(
+            `Não foi possível carregar as categorias (HTTP ${resposta.status}).`,
+          );
+        }
+
+        const dados = extrairCadastros<CategoriaCadastro>(
+          (await resposta.json()) as RespostaCadastros<CategoriaCadastro>,
+        );
+
+        if (ativo) {
+          setCategoriasFiltro(dados);
+          setErroCategoriasFiltro("");
+        }
+      } catch (erro) {
+        if (erro instanceof Error && erro.name === "AbortError") return;
+
+        if (ativo) {
+          setCategoriasFiltro([]);
+          setErroCategoriasFiltro(
+            erro instanceof Error
+              ? erro.message
+              : "Não foi possível carregar as categorias.",
+          );
+        }
+      } finally {
+        if (ativo) setCarregandoCategoriasFiltro(false);
+      }
+    }
+
+    void carregarCategoriasFiltro();
+
+    return () => {
+      ativo = false;
+      controlador.abort();
+    };
+  }, []);
+
+  // Carrega as opções apenas quando o cadastro de produto é aberto.
+  // Pesquisa e paginação de produtos não provocam novas consultas auxiliares.
+  useEffect(() => {
+    if (!formularioAberto) return;
+    const token = sessionStorage.getItem("gestao.accessToken");
+    if (!token) return;
+    let ativo = true;
+    const controlador = new AbortController();
+    setCarregandoCadastros(true);
+    setErroCadastros("");
+
+    async function obterLista<T>(rota: string): Promise<T[]> {
+      const resposta = await fetch(`${API_URL}/${rota}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        cache: "no-store",
+        signal: controlador.signal,
+      });
+      if (!resposta.ok) throw new Error(`Falha ao consultar ${rota} (HTTP ${resposta.status}).`);
+      return extrairCadastros<T>((await resposta.json()) as RespostaCadastros<T>);
+    }
+
+    Promise.all([
+      obterLista<CategoriaCadastro>("categorias"),
+      obterLista<UnidadeCadastro>("unidades"),
+    ])
+      .then(([categorias, unidades]) => {
+        if (!ativo) return;
+        setCategoriasCadastro(categorias);
+        setUnidadesCadastro(unidades);
+      })
+      .catch((erro: unknown) => {
+        if (!ativo || (erro instanceof Error && erro.name === "AbortError")) return;
+        setCategoriasCadastro([]);
+        setUnidadesCadastro([]);
+        setErroCadastros(erro instanceof Error ? erro.message : "Falha ao obter categorias e unidades.");
+      })
+      .finally(() => { if (ativo) setCarregandoCadastros(false); });
+
+    return () => { ativo = false; controlador.abort(); };
+  }, [formularioAberto]);
 
   // Atualiza a listagem depois de cadastrar ou movimentar estoque.
   const [atualizacao, setAtualizacao] = useState(0);
+  // Solicita novo resumo após movimentar estoque sem alterar a busca atual.
+  const [atualizacaoResumo, setAtualizacaoResumo] = useState(0);
   const [mensagemSucesso, setMensagemSucesso] = useState("");
 
   // Estado do modal de movimentação de estoque.
@@ -352,6 +515,11 @@ export default function ProdutosPage() {
   const [erroHistorico, setErroHistorico] = useState("");
   const [atualizacaoHistorico, setAtualizacaoHistorico] = useState(0);
   const [nomeEmpresa, setNomeEmpresa] = useState("Empresa autenticada");
+  const [perfilUsuario, setPerfilUsuario] = useState<string | null>(null);
+
+  // Somente administradores e gerentes acessam os recursos gerenciais.
+  const acessoGerencial =
+    perfilUsuario === "ADMINISTRADOR" || perfilUsuario === "GERENTE";
 
   /** Limpa a sessão local e redireciona o usuário para o login. */
   function encerrarSessaoLocal() {
@@ -369,6 +537,7 @@ useEffect(() => {
 
     const usuario = JSON.parse(usuarioSalvo) as {
       empresaNome?: unknown;
+      perfil?: unknown;
     };
 
     if (
@@ -377,10 +546,94 @@ useEffect(() => {
     ) {
       setNomeEmpresa(usuario.empresaNome.trim());
     }
+
+    if (typeof usuario.perfil === "string") {
+      setPerfilUsuario(usuario.perfil);
+    }
   } catch {
     setNomeEmpresa("Empresa autenticada");
+    setPerfilUsuario(null);
   }
   }, []);
+  /**
+   * Consulta os indicadores do catálogo inteiro, isolados pelo token.
+   * Não depende de pesquisa nem de página: digitar na busca não gera
+   * consultas adicionais à API de resumo.
+   */
+  useEffect(() => {
+    let ativo = true;
+    const controlador = new AbortController();
+
+    async function carregarResumoGeral() {
+      const token = sessionStorage.getItem("gestao.accessToken");
+      if (!token) {
+        if (ativo) {
+          setCarregandoResumo(false);
+          setResumoGeral(null);
+        }
+        return;
+      }
+
+      setCarregandoResumo(true);
+      setErroResumo("");
+      try {
+        const resposta = await fetch(`${API_URL}/produtos/resumo-estoque`, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          signal: controlador.signal,
+        });
+        const dados = await lerRespostaJson<ResumoGeralProdutos & RespostaApi>(resposta);
+
+        if (resposta.status === 401 || resposta.status === 403) {
+          sessionStorage.removeItem("gestao.accessToken");
+          sessionStorage.removeItem("gestao.usuario");
+          router.replace("/");
+          return;
+        }
+        if (!resposta.ok) {
+          throw new Error(obterMensagemErro(dados, "Não foi possível consultar os indicadores gerais."));
+        }
+        // Não exibe totais inventados quando a API falha ou muda o contrato.
+        const campos: (keyof ResumoGeralProdutos)[] = [
+          "totalProdutos", "produtosAtivos", "produtosInativos",
+          "estoqueCritico", "semEstoque",
+        ];
+        if (campos.some((campo) =>
+          !Number.isInteger(dados[campo]) || dados[campo] < 0
+        ) || dados.totalProdutos !== dados.produtosAtivos + dados.produtosInativos) {
+          throw new Error("A API retornou indicadores gerais inválidos.");
+        }
+        if (ativo) {
+          setResumoGeral({
+            totalProdutos: dados.totalProdutos,
+            produtosAtivos: dados.produtosAtivos,
+            produtosInativos: dados.produtosInativos,
+            estoqueCritico: dados.estoqueCritico,
+            semEstoque: dados.semEstoque,
+            semSaldo: dados.semSaldo,
+          });
+        }
+      } catch (erro) {
+        if (erro instanceof Error && erro.name === "AbortError") return;
+        if (ativo) {
+          setResumoGeral(null);
+          setErroResumo(erro instanceof Error ? erro.message : "Falha ao consultar indicadores gerais.");
+        }
+      } finally {
+        if (ativo) setCarregandoResumo(false);
+      }
+    }
+
+    void carregarResumoGeral();
+    return () => {
+      ativo = false;
+      controlador.abort();
+    };
+  }, [atualizacao, atualizacaoResumo, router]);
+
   /**
    * Carrega a página de produtos autenticada.
    * A empresa é definida pelo backend com base no token enviado.
@@ -409,6 +662,24 @@ useEffect(() => {
 
         const termo = pesquisa.trim();
         if (termo) parametros.set("busca", termo);
+
+        // A API valida a categoria dentro da empresa autenticada.
+        if (categoriaSelecionada) {
+          parametros.set("categoriaId", categoriaSelecionada);
+        }
+
+        // A ausência do parâmetro ativo representa todos os produtos.
+        if (situacaoSelecionada === "ATIVOS") {
+          parametros.set("ativo", "true");
+        } else if (situacaoSelecionada === "INATIVOS") {
+          parametros.set("ativo", "false");
+        }
+
+        // Envia o estado somente quando houver um filtro específico.
+        // A empresa continua sendo identificada pelo token no backend.
+        if (estadoEstoqueSelecionado !== "TODOS") {
+          parametros.set("estadoEstoque", estadoEstoqueSelecionado);
+        }
 
         const resposta = await fetch(
           `${API_URL}/produtos?${parametros.toString()}`,
@@ -473,7 +744,15 @@ useEffect(() => {
       window.clearTimeout(temporizador);
       controlador.abort();
     };
-  }, [pesquisa, pagina, atualizacao, router]);
+  }, [
+    pesquisa,
+    categoriaSelecionada,
+    situacaoSelecionada,
+    estadoEstoqueSelecionado,
+    pagina,
+    atualizacao,
+    router,
+  ]);
 
     /**
    * Atualiza os saldos quando uma venda acontece em outra aba
@@ -632,45 +911,16 @@ useEffect(() => {
     router,
   ]);
 
-  /**
-   * Indicadores calculados a partir dos produtos da página atual.
-   * Os totais de estoque são identificados explicitamente como locais à página,
-   * pois a listagem da API é paginada e não representa todo o catálogo.
-   */
-  /**
-   * Indicadores calculados a partir dos produtos da página atual.
-   * Os totais de estoque são locais à página, pois a listagem é paginada.
-   */
-  const indicadores = useMemo(() => {
-    const ativos = produtos.filter((produto) => produto.ativo).length;
-    const inativos = produtos.filter((produto) => !produto.ativo).length;
-
-    const estados = produtos.map((produto) =>
-      obterEstadoEstoque(produto),
-    );
-
-    const estoqueCritico = estados.filter(
-      (estado) => estado.codigo === "CRITICO",
-    ).length;
-
-    const semEstoque = estados.filter(
-      (estado) => estado.codigo === "SEM_ESTOQUE",
-    ).length;
-
-    const semSaldo = estados.filter(
-      (estado) => estado.codigo === "SEM_SALDO",
-    ).length;
-
-    return {
-      total,
-      exibidos: produtos.length,
-      ativos,
-      inativos,
-      estoqueCritico,
-      semEstoque,
-      semSaldo,
-    };
-  }, [produtos, total]);
+  /** Totais da empresa obtidos pelo backend, não pela página filtrada. */
+  const indicadores = useMemo(() => ({
+    total: resumoGeral?.totalProdutos ?? null,
+    exibidos: produtos.length,
+    ativos: resumoGeral?.produtosAtivos ?? null,
+    inativos: resumoGeral?.produtosInativos ?? null,
+    estoqueCritico: resumoGeral?.estoqueCritico ?? null,
+    semEstoque: resumoGeral?.semEstoque ?? null,
+    semSaldo: resumoGeral?.semSaldo ?? null,
+  }), [produtos.length, resumoGeral]);
 
   // Produtos que precisam de atenção, limitados à página carregada.
   const produtosComAlertaEstoque = useMemo(
@@ -777,6 +1027,8 @@ useEffect(() => {
         sku,
         ...(descricao ? { descricao } : {}),
         ...(codigoBarras ? { codigoBarras } : {}),
+        ...(formulario.categoriaId ? { categoriaId: formulario.categoriaId } : {}),
+        ...(formulario.unidadeId ? { unidadeId: formulario.unidadeId } : {}),
         preco,
         custo,
         quantidadeInicial,
@@ -953,12 +1205,32 @@ useEffect(() => {
         );
       }
 
+      const respostaMovimentacao = dados as RespostaApi & {
+        saldoEstoque?: ProdutoApi["saldoEstoque"];
+      };
+      const saldoAtualizado = respostaMovimentacao.saldoEstoque;
+
       setModalMovimentacaoAberto(false);
       setMensagemSucesso(
         `${rotuloMovimentacao(tipoMovimentacao)} registrada com sucesso para ${nomeProduto}.`,
       );
-      setAtualizacao((valor) => valor + 1);
-      // Se o histórico estiver aberto, solicita também uma nova consulta.
+
+      if (saldoAtualizado) {
+        // Atualiza somente o produto movimentado, usando o saldo confirmado pela API.
+        setAtualizacaoResumo((valor) => valor + 1);
+        setProdutos((produtosAtuais) =>
+          produtosAtuais.map((produto) =>
+            produto.id === produtoMovimentacao.id
+              ? { ...produto, saldoEstoque: saldoAtualizado }
+              : produto,
+          ),
+        );
+      } else {
+        // Mantém uma alternativa segura caso a API não retorne o saldo esperado.
+        setAtualizacao((valor) => valor + 1);
+      }
+
+      // Atualiza também o histórico se ele estiver aberto.
       setAtualizacaoHistorico((valor) => valor + 1);
     } catch (erro) {
       setErroMovimentacao(
@@ -992,70 +1264,7 @@ useEffect(() => {
   return (
     <ProtecaoSessao>
       <div className={styles.pagina}>
-        {/* Navegação lateral preservada da tela original. */}
-        <aside className={styles.sidebar}>
-          <Link href="/dashboard" className={styles.brand}>
-            <span className={styles.brandIcon}>GC</span>
-            <span>
-              <strong>GESTÃO</strong>
-              <small>COMERCIAL</small>
-            </span>
-          </Link>
-          
-          <div className={styles.empresaDemo}>
-              <span className={styles.empresaIcon}>GC</span>
-            <span>
-              <strong>{nomeEmpresa}</strong>
-              <small>Conta autenticada</small>
-            </span>
-          </div>
-
-          <nav className={styles.navegacao} aria-label="Menu principal">
-            <span className={styles.tituloMenu}>PRINCIPAL</span>
-            <Link href="/dashboard" className={styles.itemMenu}>
-              <span>▦</span>
-              Visão geral
-            </Link>
-            <Link
-              href="/produtos"
-              className={`${styles.itemMenu} ${styles.itemAtivo}`}
-              aria-current="page"
-            >
-              <span>▤</span>
-              Produtos e estoque
-            </Link>
-            <Link href="/vendas" className={styles.itemMenu}>
-              <span>↗</span>
-              Vendas
-            </Link>
-            <span className={styles.itemDesabilitado}>
-              <span>▣</span>
-              Caixa
-              <small>Em breve</small>
-            </span>
-            <span className={styles.itemDesabilitado}>
-              <span>♧</span>
-              Clientes
-              <small>Em breve</small>
-            </span>
-            <span className={styles.tituloMenu}>GESTÃO</span>
-            <span className={styles.itemDesabilitado}>
-              <span>▥</span>
-              Relatórios
-              <small>Em breve</small>
-            </span>
-            <span className={styles.itemDesabilitado}>
-              <span>♙</span>
-              Usuários
-              <small>Em breve</small>
-            </span>
-          </nav>
-
-          <div className={styles.rodapeSidebar}>
-            Catálogo de produtos
-            <Link href="/dashboard">Voltar ao Dashboard</Link>
-          </div>
-        </aside>
+        <MenuLateral nomeEmpresa={nomeEmpresa} />
 
         <main className={styles.conteudoPrincipal}>
           <header className={styles.cabecalho}>
@@ -1074,14 +1283,16 @@ useEffect(() => {
                 </p>
               </div>
 
-              <button
-                type="button"
-                className={styles.botaoPrincipal}
-                onClick={abrirFormulario}
-              >
-                <span aria-hidden="true">+</span>
-                Novo produto
-              </button>
+              {acessoGerencial && (
+                <button
+                  type="button"
+                  className={styles.botaoPrincipal}
+                  onClick={abrirFormulario}
+                >
+                  <span aria-hidden="true">+</span>
+                  Novo produto
+                </button>
+              )}
             </section>
 
             {/* Feedback visível após cadastro ou movimentação bem-sucedida. */}
@@ -1117,6 +1328,16 @@ useEffect(() => {
               </p>
             )}
 
+            {erroResumo && (
+              <p role="alert" style={{ color: "#991b1b", marginBottom: "12px" }}>
+                Indicadores gerais indisponíveis: {erroResumo}
+              </p>
+            )}
+            {carregandoResumo && (
+              <p role="status" style={{ marginBottom: "12px" }}>
+                Carregando indicadores gerais da empresa...
+              </p>
+            )}
             <section
               className={styles.resumo}
               aria-label="Resumo do catálogo e do estoque"
@@ -1126,24 +1347,24 @@ useEffect(() => {
               }}
             >
               <article className={styles.cardResumo}>
-                <span>Total encontrado</span>
-                <strong>{indicadores.total}</strong>
-                <small>Conforme a consulta à API</small>
+                <span>Total cadastrado</span>
+                <strong>{indicadores.total ?? "—"}</strong>
+                <small>Todos os produtos da empresa</small>
               </article>
               <article className={styles.cardResumo}>
-                <span>Exibidos nesta página</span>
-                <strong>{indicadores.exibidos}</strong>
-                <small>Limite de 20 registros por página</small>
+                <span>Resultados da pesquisa</span>
+                <strong>{total}</strong>
+                <small>{indicadores.exibidos} exibido(s) nesta página</small>
               </article>
               <article className={styles.cardResumo}>
-                <span>Ativos nesta página</span>
-                <strong>{indicadores.ativos}</strong>
+                <span>Ativos na empresa</span>
+                <strong>{indicadores.ativos ?? "—"}</strong>
                 <small>Produtos habilitados no catálogo</small>
               </article>
               <article className={styles.cardResumo}>
-                <span>Inativos nesta página</span>
+                <span>Inativos na empresa</span>
                 <strong className={styles.valorAlerta}>
-                  {indicadores.inativos}
+                  {indicadores.inativos ?? "—"}
                 </strong>
                 <small>Produtos desativados</small>
               </article>
@@ -1151,9 +1372,9 @@ useEffect(() => {
                 className={styles.cardResumo}
                 style={{ borderLeft: "4px solid #d97706" }}
               >
-                <span>Estoque crítico nesta página</span>
+                <span>Estoque crítico na empresa</span>
                 <strong style={{ color: "#92400e" }}>
-                  {indicadores.estoqueCritico}
+                  {indicadores.estoqueCritico ?? "—"}
                 </strong>
                 <small>Saldo positivo igual ou abaixo do mínimo</small>
               </article>
@@ -1161,9 +1382,9 @@ useEffect(() => {
                 className={styles.cardResumo}
                 style={{ borderLeft: "4px solid #dc2626" }}
               >
-                <span>Sem estoque nesta página</span>
+                <span>Sem estoque na empresa</span>
                 <strong style={{ color: "#991b1b" }}>
-                  {indicadores.semEstoque}
+                  {indicadores.semEstoque ?? "—"}
                 </strong>
                 <small>Produtos com saldo disponível igual a zero</small>
               </article>
@@ -1217,7 +1438,7 @@ useEffect(() => {
               </section>
             )}
 
-            {indicadores.semSaldo > 0 && !carregando && (
+            {(indicadores.semSaldo ?? 0) > 0 && !carregando && (
               <p
                 role="note"
                 style={{
@@ -1229,7 +1450,7 @@ useEffect(() => {
                   border: "1px solid #e2e8f0",
                 }}
               >
-                {indicadores.semSaldo} produto(s) nesta página ainda não possuem saldo inicializado. Eles foram mantidos separados dos alertas de falta de estoque para evitar classificações incorretas.
+                {indicadores.semSaldo ?? '—'} produto(s) na empresa ainda não possuem saldo inicializado. Eles foram mantidos separados dos alertas de falta de estoque para evitar classificações incorretas.
               </p>
             )}
 
@@ -1262,18 +1483,85 @@ useEffect(() => {
                   />
                 </label>
 
+                {/* Filtra somente categorias da empresa autenticada. */}
+                <label className={styles.campoFiltro}>
+                  <span>Categoria</span>
+                  <select
+                    value={categoriaSelecionada}
+                    disabled={carregandoCategoriasFiltro}
+                    onChange={(evento) => {
+                      setCategoriaSelecionada(evento.target.value);
+                      setPagina(1);
+                    }}
+                  >
+                    <option value="">
+                      {carregandoCategoriasFiltro
+                        ? "Carregando categorias..."
+                        : "Todas as categorias"}
+                    </option>
+                    {categoriasFiltro.map((categoria) => (
+                      <option key={categoria.id} value={categoria.id}>
+                        {categoria.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* Mantém todos os produtos visíveis por padrão. */}
+                <label className={styles.campoFiltro}>
+                  <span>Situação</span>
+                  <select
+                    value={situacaoSelecionada}
+                    onChange={(evento) => {
+                      setSituacaoSelecionada(evento.target.value);
+                      setPagina(1);
+                    }}
+                  >
+                    <option value="TODOS">Todos</option>
+                    <option value="ATIVOS">Ativos</option>
+                    <option value="INATIVOS">Inativos</option>
+                  </select>
+                </label>
+
+                {/* Filtra pelo saldo real, com classificação feita no backend. */}
+                <label className={styles.campoFiltro}>
+                  <span>Estado do estoque</span>
+                  <select
+                    value={estadoEstoqueSelecionado}
+                    onChange={(evento) => {
+                      setEstadoEstoqueSelecionado(evento.target.value);
+                      setPagina(1);
+                    }}
+                  >
+                    <option value="TODOS">Todos os estados</option>
+                    <option value="NORMAL">Normal</option>
+                    <option value="CRITICO">Crítico</option>
+                    <option value="SEM_ESTOQUE">Sem estoque</option>
+                    <option value="SEM_SALDO">Sem saldo cadastrado</option>
+                  </select>
+                </label>
+
                 <button
                   type="button"
                   className={styles.botaoLimpar}
                   onClick={() => {
                     setPesquisa("");
+                    setCategoriaSelecionada("");
+                    setSituacaoSelecionada("TODOS");
+                    setEstadoEstoqueSelecionado("TODOS");
                     setPagina(1);
                     setErroCarregamento("");
                   }}
                 >
-                  Limpar pesquisa
+                  Limpar filtros
                 </button>
               </div>
+
+              {erroCategoriasFiltro && (
+                <p className={styles.erroFormulario} role="alert">
+                  {erroCategoriasFiltro}
+                </p>
+              )}
 
               {erroCarregamento && (
                 <p className={styles.erroFormulario} role="alert">
@@ -1288,9 +1576,9 @@ useEffect(() => {
                       <th>Produto</th>
                       <th>SKU</th>
                       <th>Preço de venda</th>
-                      <th>Custo</th>
-                      <th>Lucro bruto unitário</th>
-                      <th>Margem bruta</th>					                        
+                      {acessoGerencial && <th>Custo</th>}
+                      {acessoGerencial && <th>Lucro bruto unitário</th>}
+                      {acessoGerencial && <th>Margem bruta</th>}
                       <th>Estoque disponível</th>
                       <th>Estoque mínimo</th>
                       <th>Estado do estoque</th>
@@ -1299,15 +1587,13 @@ useEffect(() => {
                     </tr>
                   </thead>
                   <tbody>
-                    {!carregando &&
-                      !erroCarregamento &&
-                      produtos.map((produto) => {
+                    {produtos.map((produto) => {
                       const estadoEstoque = obterEstadoEstoque(produto);
                       const possuiSaldo = produto.saldoEstoque != null;
                                           
                       // Valores atuais cadastrados no produto.
                       const precoVenda = converterValorNumerico(produto.preco);
-                      const custoProduto = converterValorNumerico(produto.custo);
+                      const custoProduto = converterValorNumerico(produto.custo ?? 0);
                                           
                       // Lucro bruto estimado por unidade.
                       const lucroBrutoUnitario = precoVenda - custoProduto;
@@ -1351,49 +1637,59 @@ useEffect(() => {
                               converterValorNumerico(produto.preco),
                             )}
                           </td>
-                          <td>
-                            {formatadorMoeda.format(
-                              converterValorNumerico(produto.custo),
-                            )}
-                          </td>
-                          {/* Lucro bruto estimado por unidade. */}
-                          <td
-                            className={
-                              lucroBrutoUnitario < 0
-                                ? styles.resultadoNegativo
-                                : lucroBrutoUnitario > 0
-                                  ? styles.resultadoPositivo
-                                  : styles.resultadoNeutro
-                            }
-                          >
-                            <strong>
-                              {formatadorMoeda.format(lucroBrutoUnitario)}
-                            </strong>
-                            <small>por unidade</small>
-                          </td>
-                          
-                          {/* Margem bruta calculada sobre o preço de venda. */}
-                          <td>
-                            {margemBrutaPercentual === null ? (
-                              <span
-                                className={styles.margemIndisponivel}
-                                title="Não é possível calcular a margem quando o preço de venda é zero."
+                          {acessoGerencial && (
+                            <td>
+                              {formatadorMoeda.format(
+                                converterValorNumerico(produto.custo ?? 0),
+                              )}
+                            </td>
+                          )}
+                          {acessoGerencial && (
+                            <>
+                              {/* Lucro bruto estimado por unidade. */}
+                              <td
+                                className={
+                                  lucroBrutoUnitario < 0
+                                    ? styles.resultadoNegativo
+                                    : lucroBrutoUnitario > 0
+                                      ? styles.resultadoPositivo
+                                      : styles.resultadoNeutro
+                                }
                               >
-                                Não calculável
-                              </span>
-                            ) : (
-                              <span
-                                className={`${styles.margemBadge} ${
-                                  margemBrutaPercentual < 0
-                                    ? styles.margemNegativa
-                                    : styles.margemPositiva
-                                }`}
-                                title="Margem bruta estimada sobre o preço de venda cadastrado."
-                              >
-                                {formatadorPercentual.format(margemBrutaPercentual)}%
-                              </span>
-                            )}
-                          </td>
+                                <strong>
+                                  {formatadorMoeda.format(lucroBrutoUnitario)}
+                                </strong>
+                                <small>por unidade</small>
+                              </td>
+                            </>
+                          )}
+
+                          {acessoGerencial && (
+                            <>
+                              {/* Margem bruta calculada sobre o preço de venda. */}
+                              <td>
+                                {margemBrutaPercentual === null ? (
+                                  <span
+                                    className={styles.margemIndisponivel}
+                                    title="Não é possível calcular a margem quando o preço de venda é zero."
+                                  >
+                                    Não calculável
+                                  </span>
+                                ) : (
+                                  <span
+                                    className={`${styles.margemBadge} ${
+                                      margemBrutaPercentual < 0
+                                        ? styles.margemNegativa
+                                        : styles.margemPositiva
+                                    }`}
+                                    title="Margem bruta estimada sobre o preço de venda cadastrado."
+                                  >
+                                    {formatadorPercentual.format(margemBrutaPercentual)}%
+                                  </span>
+                                )}
+                              </td>
+                            </>
+                          )}
                           <td>
                             {possuiSaldo
                               ? formatadorQuantidade.format(
@@ -1443,6 +1739,16 @@ useEffect(() => {
                                 minWidth: "180px",
                               }}
                             >
+                              {acessoGerencial && (
+                                <button
+                                  type="button"
+                                  className={styles.botaoSecundario}
+                                  onClick={() => router.push(`/produtos/editar/${produto.id}`)}
+                                  title="Editar somente os dados cadastrais do produto"
+                                >
+                                  Editar
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 className={styles.botaoSecundario}
@@ -1473,7 +1779,7 @@ useEffect(() => {
                       !erroCarregamento &&
                       produtos.length === 0 && (
                         <tr>
-                          <td colSpan={11} className={styles.semResultados}>
+                          <td colSpan={acessoGerencial ? 11 : 8} className={styles.semResultados}>
                             {pesquisa.trim()
                               ? "Nenhum produto encontrado para esta pesquisa."
                               : "Nenhum produto cadastrado nesta empresa."}
@@ -1483,7 +1789,7 @@ useEffect(() => {
 
                     {carregando && (
                       <tr>
-                        <td colSpan={11} className={styles.semResultados}>
+                        <td colSpan={acessoGerencial ? 11 : 8} className={styles.semResultados}>
                           Carregando produtos da API...
                         </td>
                       </tr>
@@ -1527,7 +1833,7 @@ useEffect(() => {
         </main>
 
         {/* Modal original de cadastro de produto, preservado. */}
-        {formularioAberto && (
+        {acessoGerencial && formularioAberto && (
           <div
             className={styles.fundoModal}
             role="presentation"
@@ -1618,6 +1924,50 @@ useEffect(() => {
                       disabled={enviando}
                     />
                   </label>
+
+                  {/* Listas auxiliares usam IDs validados no backend pelo tenant autenticado. */}
+                  <label>
+                    Categoria (opcional)
+                    <select
+                      value={formulario.categoriaId}
+                      onChange={(evento) => atualizarCampo("categoriaId", evento.target.value)}
+                      disabled={enviando || carregandoCadastros || Boolean(erroCadastros)}
+                    >
+                      <option value="">Sem categoria</option>
+                      {categoriasCadastro.map((categoria) => {
+                        const pai = categoriasCadastro.find((item) => item.id === categoria.categoriaPaiId);
+                        return (
+                          <option key={categoria.id} value={categoria.id}>
+                            {pai ? `${pai.nome} / ${categoria.nome}` : categoria.nome}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <label>
+                    Unidade de medida (opcional)
+                    <select
+                      value={formulario.unidadeId}
+                      onChange={(evento) => atualizarCampo("unidadeId", evento.target.value)}
+                      disabled={enviando || carregandoCadastros || Boolean(erroCadastros)}
+                    >
+                      <option value="">Sem unidade definida</option>
+                      {unidadesCadastro.map((unidade) => (
+                        <option key={unidade.id} value={unidade.id}>
+                          {unidade.codigo} — {unidade.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {carregandoCadastros && (
+                    <p className={styles.campoCompleto} role="status">Carregando categorias e unidades...</p>
+                  )}
+                  {erroCadastros && (
+                    <p className={styles.campoCompleto} role="alert">
+                      Não foi possível carregar categorias e unidades: {erroCadastros}.
+                      O produto ainda pode ser cadastrado sem esses vínculos.
+                    </p>
+                  )}
 
                   <label>
                     Preço de venda (R$) *

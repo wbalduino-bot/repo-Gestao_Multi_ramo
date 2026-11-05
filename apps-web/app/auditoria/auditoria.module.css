@@ -1,0 +1,47 @@
+.layout{display:flex;min-height:100vh;background:#f6f8fb;color:#172b42}.main{flex:1;min-width:0;padding:32px;max-width:1600px;margin:0 auto}.cabecalho{margin-bottom:24px}.cabecalho h1{font-size:28px;margin:0 0 8px}.cabecalho p{margin:0;color:#52667b}.metricas{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:24px}.metricas article{background:#fff;border:1px solid #dce4ec;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:8px}.metricas span{font-size:13px;color:#52667b}.metricas strong{font-size:26px}.filtros{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;background:#fff;border:1px solid #dce4ec;border-radius:12px;padding:20px;margin-bottom:20px}.filtros label{display:flex;flex-direction:column;gap:7px;font-weight:600;font-size:13px}.filtros input,.filtros select{width:100%;border:1px solid #bdccd9;border-radius:7px;padding:10px;font-size:14px;background:white;color:#172b42}.acoes{display:flex;align-items:end;gap:10px}.acoes button,.paginacao button{background:#103c64;color:#fff;border:0;border-radius:8px;padding:11px 16px;cursor:pointer}.acoes button[type=button]{background:#e9eff5;color:#183958}.tabelaArea{overflow-x:auto;background:#fff;border:1px solid #dce4ec;border-radius:12px}.tabelaArea table{width:100%;border-collapse:collapse;font-size:13px}.tabelaArea th,.tabelaArea td{text-align:left;padding:14px 12px;border-bottom:1px solid #e9eef4;vertical-align:top}.tabelaArea th{background:#edf3f9;color:#34516b}.detalhes{border:0;background:none;color:#11649f;cursor:pointer;text-decoration:underline}.painelDetalhe{margin-top:8px;padding:12px;background:#f5f8fc;border-radius:8px;min-width:220px;overflow-wrap:anywhere}.painelDetalhe p{margin:6px 0}.paginacao{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:18px}.paginacao button:disabled{opacity:.45;cursor:not-allowed}.erro{background:#fff0ef;color:#a40000;border-radius:8px;padding:12px}@media(max-width:1100px){.metricas{grid-template-columns:repeat(2,minmax(0,1fr))}.filtros{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.layout{flex-direction:column}.main{padding:16px}.filtros{grid-template-columns:1fr}}
+
+
+/* CORRECAO DO LAYOUT DA AUDITORIA EMPRESARIAL */
+
+/*
+ * O menu compartilhado possui largura padrão de 100%.
+ * Nesta página, limitamos sua largura em telas maiores
+ * para preservar a área principal da auditoria.
+ */
+.layout > aside {
+  width: 260px;
+  min-width: 260px;
+  max-width: 260px;
+  flex: 0 0 260px;
+}
+
+/*
+ * A área principal utiliza o espaço restante.
+ * Tabelas grandes devem rolar dentro da própria área.
+ */
+.layout > .main {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+}
+
+/*
+ * Em telas pequenas, a navegação e o conteúdo
+ * passam a ocupar a largura disponível.
+ */
+@media (max-width: 680px) {
+  .layout > aside {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+    min-height: auto;
+    flex: 0 0 auto;
+  }
+
+  .layout > .main {
+    width: 100%;
+  }
+}

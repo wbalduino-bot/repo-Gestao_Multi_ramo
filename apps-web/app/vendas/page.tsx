@@ -11,6 +11,7 @@ import {
 
 import styles from "./vendas.module.css";
 import { ProtecaoSessao } from "../componentes/protecao-sessao";
+import { MenuLateral } from "../componentes/menu-lateral";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5433";
@@ -219,6 +220,11 @@ export default function VendasPage() {
 
   // Nome da empresa salvo na sessão durante o login.
   const [nomeEmpresa, setNomeEmpresa] = useState("Empresa autenticada");
+
+  // O acesso gerencial é liberado somente para os perfis autorizados.
+  const [perfilUsuario, setPerfilUsuario] = useState<string | null>(null);
+  const acessoGerencial =
+    perfilUsuario === "ADMINISTRADOR" || perfilUsuario === "GERENTE";
   
   /**
  * Recupera o nome da empresa armazenado durante o login.
@@ -231,7 +237,12 @@ useEffect(() => {
 
     const usuario = JSON.parse(usuarioSalvo) as {
       empresaNome?: unknown;
+      perfil?: unknown;
     };
+
+    if (typeof usuario.perfil === "string") {
+      setPerfilUsuario(usuario.perfil);
+    }
 
     if (
       typeof usuario.empresaNome === "string" &&
@@ -780,69 +791,7 @@ useEffect(() => {
   return (
     <ProtecaoSessao>
       <div className={styles.pagina}>
-        <aside className={styles.sidebar}>
-          <Link href="/dashboard" className={styles.brand}>
-            <span className={styles.brandIcon}>GC</span>
-            <span className={styles.brandText}>
-              <strong>GESTÃO</strong>
-              <span>COMERCIAL</span>
-            </span>
-          </Link>
-
-          <div className={styles.empresa}>
-            <span className={styles.empresaIcon}>GC</span>       
-              <span>
-              <strong>{nomeEmpresa}</strong>
-              <small>Empresa autenticada</small>
-            </span>
-          </div>
-          <nav className={styles.navegacao} aria-label="Menu principal">
-            <span className={styles.tituloMenu}>PRINCIPAL</span>
-
-            <Link href="/dashboard" className={styles.itemMenu}>
-              <span>▦</span>
-              Visão geral
-            </Link>
-
-            <Link href="/produtos" className={styles.itemMenu}>
-              <span>▤</span>
-              Produtos e estoque
-            </Link>
-
-            <Link
-              href="/vendas"
-              className={`${styles.itemMenu} ${styles.itemAtivo}`}
-              aria-current="page"
-            >
-              <span>↗</span>
-              Vendas
-            </Link>
-
-            <span className={styles.tituloMenu}>GESTÃO</span>
-
-            <span className={styles.itemDesabilitado}>
-              <span>▣</span>
-              Caixa
-              <small>Em breve</small>
-            </span>
-
-            <span className={styles.itemDesabilitado}>
-              <span>♧</span>
-              Clientes
-              <small>Em breve</small>
-            </span>
-
-            <span className={styles.itemDesabilitado}>
-              <span>▥</span>
-              Relatórios
-              <small>Em breve</small>
-            </span>
-          </nav>
-
-          <div className={styles.sidebarRodape}>
-            Gestão Comercial Multi-Ramo
-          </div>
-        </aside>
+        <MenuLateral nomeEmpresa={nomeEmpresa} />
 
         <main className={styles.conteudo}>
           <header className={styles.cabecalho}>
@@ -1180,8 +1129,8 @@ useEffect(() => {
                       <th>Pagamento</th>
                       <th>Itens</th>
                       <th>Total</th>
-                      <th>Lucro bruto</th>
-                      <th>Margem bruta</th>
+                      {acessoGerencial && <th>Lucro bruto</th>}
+                      {acessoGerencial && <th>Margem bruta</th>}
                       <th>Detalhes</th>                   
                   </tr>
                   </thead>
@@ -1220,6 +1169,8 @@ useEffect(() => {
                             numeroSeguro(venda.total),
                           )}
                         </td>
+                        {acessoGerencial && (
+                          <>
                         {/* Lucro bruto total da venda. */}
                         <td>
                           {!venda.custoHistoricoDisponivel ? (
@@ -1265,6 +1216,9 @@ useEffect(() => {
                             </strong>
                           )}
                         </td>
+
+                          </>
+                        )}
 
                         <td>
                           <button
@@ -1362,43 +1316,49 @@ useEffect(() => {
                         {formatadorMoeda.format(
                           numeroSeguro(detalheVenda.total),
                         )}
-                        <span>
-                          Custo total dos produtos:{" "}
-                          {detalheVenda.custoHistoricoDisponivel &&
-                          detalheVenda.custoTotal !== null
-                            ? formatadorMoeda.format(detalheVenda.custoTotal)
-                            : "Custo histórico indisponível"}
-                        </span>
+                        {acessoGerencial && (
+                          <span>
+                            Custo total dos produtos:{" "}
+                            {detalheVenda.custoHistoricoDisponivel &&
+                            detalheVenda.custoTotal !== null
+                              ? formatadorMoeda.format(detalheVenda.custoTotal)
+                              : "Custo histórico indisponível"}
+                          </span>
+                        )}
                           
-                        <strong
-                          className={
-                            detalheVenda.lucroBrutoTotal === null
-                              ? styles.financeiroIndisponivel
-                              : detalheVenda.lucroBrutoTotal < 0
-                                ? styles.financeiroNegativo
-                                : styles.financeiroPositivo
-                          }
-                        >
-                          Lucro bruto total:{" "}
-                          {detalheVenda.custoHistoricoDisponivel &&
-                          detalheVenda.lucroBrutoTotal !== null
-                            ? formatadorMoeda.format(detalheVenda.lucroBrutoTotal)
-                            : "Indisponível"}
-                        </strong>
+                        {acessoGerencial && (
+                          <strong
+                            className={
+                              detalheVenda.lucroBrutoTotal === null
+                                ? styles.financeiroIndisponivel
+                                : detalheVenda.lucroBrutoTotal < 0
+                                  ? styles.financeiroNegativo
+                                  : styles.financeiroPositivo
+                            }
+                          >
+                            Lucro bruto total:{" "}
+                            {detalheVenda.custoHistoricoDisponivel &&
+                            detalheVenda.lucroBrutoTotal !== null
+                              ? formatadorMoeda.format(detalheVenda.lucroBrutoTotal)
+                              : "Indisponível"}
+                          </strong>
+                        )}
                           
-                        <span>
-                          Margem bruta:{" "}
-                          {detalheVenda.custoHistoricoDisponivel &&
-                          detalheVenda.margemBrutaPercentual !== null
-                            ? `${detalheVenda.margemBrutaPercentual.toLocaleString(
-                                "pt-BR",
-                                {
-                                  minimumFractionDigits: 1,
-                                  maximumFractionDigits: 2,
-                                },
-                              )}%`
-                            : "Indisponível"}
-                        </span>
+                        {acessoGerencial && (
+                          <span>
+                            Margem bruta:{" "}
+                            {detalheVenda.custoHistoricoDisponivel &&
+                            detalheVenda.margemBrutaPercentual !== null
+                              ? `${detalheVenda.margemBrutaPercentual.toLocaleString(
+                                  "pt-BR",
+                                  {
+                                    minimumFractionDigits: 1,
+                                    maximumFractionDigits: 2,
+                                  },
+                                )}%`
+                              : "Indisponível"}
+                          </span>
+                        )}
                       </strong>
                     </div>
 
@@ -1428,43 +1388,49 @@ useEffect(() => {
                               {formatadorMoeda.format(numeroSeguro(item.subtotal))}
                             </strong>
                                                       
-                            <small>
-                              Custo unitário:{" "}
-                              {item.custoHistoricoDisponivel &&
-                              item.custoUnitario !== null
-                                ? formatadorMoeda.format(item.custoUnitario)
-                                : "Indisponível"}
-                            </small>
+                            {acessoGerencial && (
+                              <small>
+                                Custo unitário:{" "}
+                                {item.custoHistoricoDisponivel &&
+                                item.custoUnitario !== null
+                                  ? formatadorMoeda.format(item.custoUnitario)
+                                  : "Indisponível"}
+                              </small>
+                            )}
                               
-                            <small
-                              className={
-                                item.lucroBruto === null
-                                  ? styles.financeiroIndisponivel
-                                  : item.lucroBruto < 0
-                                    ? styles.financeiroNegativo
-                                    : styles.financeiroPositivo
-                              }
-                            >
-                              Lucro bruto:{" "}
-                              {item.custoHistoricoDisponivel &&
-                              item.lucroBruto !== null
-                                ? formatadorMoeda.format(item.lucroBruto)
-                                : "Indisponível"}
-                            </small>
+                            {acessoGerencial && (
+                              <small
+                                className={
+                                  item.lucroBruto === null
+                                    ? styles.financeiroIndisponivel
+                                    : item.lucroBruto < 0
+                                      ? styles.financeiroNegativo
+                                      : styles.financeiroPositivo
+                                }
+                              >
+                                Lucro bruto:{" "}
+                                {item.custoHistoricoDisponivel &&
+                                item.lucroBruto !== null
+                                  ? formatadorMoeda.format(item.lucroBruto)
+                                  : "Indisponível"}
+                              </small>
+                            )}
                               
-                            <small>
-                              Margem bruta:{" "}
-                              {item.custoHistoricoDisponivel &&
-                              item.margemBrutaPercentual !== null
-                                ? `${item.margemBrutaPercentual.toLocaleString(
-                                    "pt-BR",
-                                    {
-                                      minimumFractionDigits: 1,
-                                      maximumFractionDigits: 2,
-                                    },
-                                  )}%`
-                                : "Indisponível"}
-                            </small>
+                            {acessoGerencial && (
+                              <small>
+                                Margem bruta:{" "}
+                                {item.custoHistoricoDisponivel &&
+                                item.margemBrutaPercentual !== null
+                                  ? `${item.margemBrutaPercentual.toLocaleString(
+                                      "pt-BR",
+                                      {
+                                        minimumFractionDigits: 1,
+                                        maximumFractionDigits: 2,
+                                      },
+                                    )}%`
+                                  : "Indisponível"}
+                              </small>
+                            )}
                           </div>
                         </article>
                       ))}

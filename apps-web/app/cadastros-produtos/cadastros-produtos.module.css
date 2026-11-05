@@ -1,0 +1,23 @@
+/* Tela administrativa de cadastros auxiliares; menu compartilhado com largura controlada. */
+.layout { display: flex; min-height: 100vh; background: #f6f8fb; color: #172b42; }
+.layout > aside { width: 260px; min-width: 260px; max-width: 260px; flex: 0 0 260px; }
+.main { min-width: 0; flex: 1 1 0; padding: 32px; }
+.cabecalho { margin-bottom: 24px; }
+.cabecalho h1 { margin: 0 0 8px; font-size: 28px; }
+.cabecalho p, .cartao > p { color: #52667b; }
+.colunas { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; align-items: start; }
+.cartao { border: 1px solid #dce4ec; border-radius: 12px; padding: 22px; background: white; min-width: 0; }
+.cartao h2 { margin: 0 0 8px; font-size: 20px; }
+.cartao h3 { font-size: 16px; margin: 28px 0 12px; }
+.formulario { display: grid; gap: 14px; margin-top: 20px; }
+.formulario label { display: grid; gap: 7px; font-weight: 600; font-size: 14px; }
+.formulario input, .formulario select { width: 100%; min-width: 0; padding: 11px; border: 1px solid #bccbd9; border-radius: 8px; font: inherit; color: #172b42; background: #fff; }
+.formulario button { justify-self: start; padding: 12px 18px; background: #103c64; color: #fff; border: 0; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.formulario button:disabled { opacity: .55; cursor: not-allowed; }
+.lista { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.lista li { padding: 12px 14px; background: #f5f8fc; border: 1px solid #e6ecf3; border-radius: 8px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.lista small { color: #52667b; }
+.erro { background: #fff0ef; color: #a40000; border-radius: 8px; padding: 12px; }
+.sucesso { background: #eaf7ef; color: #175d31; border-radius: 8px; padding: 12px; }
+@media (max-width: 1000px) { .colunas { grid-template-columns: 1fr; } }
+@media (max-width: 680px) { .layout { flex-direction: column; } .layout > aside { position: relative; width: 100%; max-width: 100%; min-width: 0; height: auto; min-height: 0; flex: 0 0 auto; } .main { padding: 16px; } }

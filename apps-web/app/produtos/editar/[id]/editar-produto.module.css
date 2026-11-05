@@ -1,0 +1,33 @@
+/* Edição de produto: estilos locais; não alteram o catálogo existente. */
+.layout { display: flex; min-height: 100vh; background: #f6f8fc; }
+/* O menu compartilhado tem largura interna de 100%; fixa a coluna sem afetar outras telas. */
+.layout > aside { width: 260px; min-width: 260px; max-width: 260px; flex: 0 0 260px; }
+.main { flex: 1; min-width: 0; padding: 30px 34px; color: #142437; }
+.cabecalho { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
+.cabecalho h1 { margin: 0 0 7px; font-size: 26px; }
+.cabecalho p { margin: 0; color: #667589; }
+.cartao { max-width: 960px; border: 1px solid #e4eaf2; border-radius: 14px; background: #fff; padding: 25px; }
+.id { font-size: 12px; color: #667589; margin: 0 0 18px; overflow-wrap: anywhere; }
+.formulario { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px; }
+.formulario label { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 600; }
+.formulario input, .formulario select { width: 100%; height: 43px; border: 1px solid #d9e2ed; border-radius: 8px; padding: 0 11px; font: inherit; font-weight: 400; background: #fff; color: #142437; }
+.formulario input:focus, .formulario select:focus { outline: 2px solid #94b8ed; outline-offset: 1px; }
+.largo { grid-column: 1 / -1; }
+.formulario h2 { font-size: 15px; margin: 4px 0 8px; }
+.formulario p { font-size: 13px; color: #5f6e82; margin: 5px 0; }
+.acoes { display: flex; justify-content: flex-end; gap: 11px; padding-top: 10px; }
+.secundario, .primario { border-radius: 8px; padding: 11px 17px; cursor: pointer; font-weight: 600; }
+.secundario { border: 1px solid #d9e2ed; background: #fff; color: #26364a; }
+.primario { border: 1px solid #194d8e; background: #194d8e; color: #fff; }
+.secundario:disabled, .primario:disabled { opacity: .55; cursor: not-allowed; }
+.erro { color: #b42318 !important; }
+.sucesso { color: #11733b !important; font-weight: 600; }
+@media (max-width: 760px) {
+  .layout { display: block; }
+  .layout > aside { width: 100%; min-width: 0; max-width: none; flex: auto; }
+  .main { padding: 18px 14px; }
+  .cabecalho { flex-direction: column; }
+  .cartao { padding: 18px; }
+  .formulario { grid-template-columns: minmax(0, 1fr); }
+  .acoes { flex-direction: column-reverse; }
+}
