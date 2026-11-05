@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { createObserveModule } from '@nestjs/observe';
 
@@ -11,6 +10,11 @@ import { AdminPlataformaModule } from './admin-plataforma/admin-plataforma.modul
 import { UsuariosModule } from './usuarios/usuarios.module.js';
 import { ProdutosModule } from './produtos/produtos.module.js';
 import { VendasModule } from './vendas/vendas.module.js';
+import { AuditoriaModule } from './auditoria/auditoria.module.js';
+import { CategoriasModule } from './categorias/categorias.module.js';
+import { UnidadesModule } from './unidades/unidades.module.js';
+import { AuditoriaEmpresaModule } from './auditoria-empresa/auditoria-empresa.module.js';
+import { LoggingModule } from './logging/logging.module.js';
 
 // Inicializa a integração de observabilidade da aplicação.
 // Disponibiliza o módulo e o instrumento de observação para uso no projeto.
@@ -26,6 +30,11 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       appSecret: process.env.OBSERVE_APP_SECRET ?? 'YOUR_APP_SECRET',
       serviceId: 'apps-api',
     }),
+
+    // Logger central:
+    // disponibiliza uma única instância para a aplicação.
+    // A integração com o TracerService será configurada no main.ts.
+    LoggingModule,
 
     // Acesso ao banco de dados PostgreSQL por meio do Prisma.
     PrismaModule,
@@ -48,10 +57,22 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     // Gerenciamento dos produtos de cada empresa.
     // Operações de produtos protegidas por autenticação JWT.
     ProdutosModule,
-    
+
+    // Catálogo de categorias e unidades isolado por empresa.
+    CategoriasModule,
+    UnidadesModule,
+
     // Registro das vendas, com validação de produtos e integração
     // transacional com o controle de estoque.
     VendasModule,
+
+    // Módulo central de auditoria.
+    // Disponibiliza o AuditoriaService para os demais módulos,
+    // permitindo registrar eventos relevantes da aplicação.
+    AuditoriaModule,
+
+    // Consulta de auditoria restrita a cada empresa autenticada.
+    AuditoriaEmpresaModule,
   ],
 
   // Controller e serviço principais da aplicação.
