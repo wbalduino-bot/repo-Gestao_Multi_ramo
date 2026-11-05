@@ -2,18 +2,45 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 
+import { AuditoriaModule } from '../auditoria/auditoria.module.js';
+import { RedisModule } from '../redis/redis.module.js';
+
 // Importa o controller responsável pela rota de login.
 import { AuthController } from './auth.controller.js';
 
-// Importa o serviço que valida as credenciais e gera o token.
+// Importa o serviço que valida credenciais, registra auditoria e gera tokens.
 import { AuthService } from './auth.service.js';
+
+// Importa o serviço que controla tentativas excessivas de autenticação.
+import { LoginRateLimitService } from './login-rate-limit.service.js';
 
 // Importa o guard que valida os tokens JWT nas rotas protegidas.
 import { JwtAuthGuard } from './strategies/jwt.strategy.js';
 
+/**
+ * Módulo de autenticação dos usuários empresariais.
+ *
+ * Centraliza:
+ * - Validação das credenciais.
+ * - Geração e validação dos tokens JWT.
+ * - Registro dos eventos de autenticação.
+ * - Proteção contra tentativas excessivas de login.
+ */
 @Module({
   imports: [
-    // Configura o módulo JWT para assinar e validar tokens.
+    // Disponibiliza o serviço central de auditoria.
+    AuditoriaModule,
+
+    // Disponibiliza a infraestrutura Redis para controlar tentativas de login.
+    RedisModule,
+
+    /**
+     * Configura o serviço JWT.
+     *
+     * A chave secreta precisa existir no ambiente.
+     * Não utilizamos uma chave padrão, pois isso comprometeria
+     * a segurança dos tokens em produção.
+     */
     JwtModule.registerAsync({
       useFactory: () => {
         // Obtém a chave secreta das variáveis de ambiente.
@@ -37,13 +64,21 @@ import { JwtAuthGuard } from './strategies/jwt.strategy.js';
     }),
   ],
 
-  // Registra a rota de autenticação.
+  // Registra o endpoint responsável pelo login empresarial.
   controllers: [AuthController],
 
-  // Registra os componentes utilizados neste módulo.
-  providers: [AuthService, JwtAuthGuard],
+  providers: [
+    // Executa a autenticação e as regras de negócio do login.
+    AuthService,
 
-  // Permite que outros módulos utilizem o JwtService.
+    // Valida os tokens JWT nas rotas protegidas.
+    JwtAuthGuard,
+
+    // Controla os limites de tentativas utilizando o Redis.
+    LoginRateLimitService,
+  ],
+
+  // Permite que outros módulos utilizem o serviço JWT.
   exports: [JwtModule],
 })
 export class AuthModule {}

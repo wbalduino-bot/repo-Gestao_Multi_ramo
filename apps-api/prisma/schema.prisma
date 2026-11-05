@@ -32,6 +32,21 @@ enum FormaPagamento {
   OUTRO
 }
 
+// Identifica quem originou o evento de auditoria.
+enum TipoAtorAuditoria {
+  USUARIO_EMPRESA
+  ADMIN_PLATAFORMA
+  SISTEMA
+  ANONIMO
+}
+
+// Resultado da operação registrada.
+enum ResultadoAuditoria {
+  SUCESSO
+  FALHA
+  BLOQUEADO
+}
+
 model Empresa {
   id       String   @id @default(uuid()) @db.Uuid
   nome     String
@@ -187,13 +202,13 @@ model Venda {
  * as vendas anteriores.
  */
 model ItemVenda {
-  id             String   @id @default(uuid()) @db.Uuid
-  vendaId        String   @db.Uuid
-  produtoId      String   @db.Uuid
-  quantidade     Decimal  @db.Decimal(14, 3)
-  precoUnitario  Decimal  @db.Decimal(12, 2)
-  custoUnitario  Decimal? @db.Decimal(12, 2)
-  subtotal       Decimal  @db.Decimal(14, 2)
+  id            String   @id @default(uuid()) @db.Uuid
+  vendaId       String   @db.Uuid
+  produtoId     String   @db.Uuid
+  quantidade    Decimal  @db.Decimal(14, 3)
+  precoUnitario Decimal  @db.Decimal(12, 2)
+  custoUnitario Decimal? @db.Decimal(12, 2)
+  subtotal      Decimal  @db.Decimal(14, 2)
 
   venda   Venda   @relation(fields: [vendaId], references: [id])
   produto Produto @relation(fields: [produtoId], references: [id])
@@ -210,4 +225,54 @@ model AdministradorPlataforma {
   hashSenha String
   ativo     Boolean  @default(true)
   criadoEm  DateTime @default(now())
+}
+
+/**
+ * Registro centralizado de eventos relevantes da plataforma.
+ * empresaId e atorId são identificadores sem relacionamento obrigatório.
+ * Isso preserva o histórico mesmo quando uma empresa ou conta deixa
+ * de existir no cadastro principal.
+ * Os registros devem ser tratados como append-only pela aplicação.
+ */
+model EventoAuditoria {
+  id String @id @default(uuid()) @db.Uuid
+
+  // Identificação do contexto e de quem originou o evento.
+  empresaId String?           @db.Uuid
+  atorId    String?           @db.Uuid
+  tipoAtor  TipoAtorAuditoria
+
+  // Identificação da operação.
+  modulo     String  @db.VarChar(80)
+  acao       String  @db.VarChar(100)
+  entidade   String? @db.VarChar(100)
+  entidadeId String? @db.VarChar(100)
+
+  // Identificação de tentativas sem autenticação, quando necessário.
+  identificadorTentativa String? @db.VarChar(255)
+
+  // Resultado e contexto da ocorrência.
+  resultado     ResultadoAuditoria
+  motivo        String?            @db.VarChar(500)
+  justificativa String?            @db.VarChar(1000)
+
+  // Dados de correlação e origem da requisição.
+  requestId String? @db.VarChar(100)
+  ipOrigem  String? @db.VarChar(45)
+  userAgent String? @db.VarChar(500)
+
+  // Dados estruturados, sujeitos a minimização e filtragem.
+  dadosAnteriores  Json?
+  dadosPosteriores Json?
+  metadados        Json?
+
+  criadoEm DateTime @default(now())
+
+  // Índices para consultas e investigações.
+  @@index([empresaId, criadoEm])
+  @@index([atorId, criadoEm])
+  @@index([modulo, acao, criadoEm])
+  @@index([resultado, criadoEm])
+  @@index([requestId])
+  @@index([tipoAtor, criadoEm])
 }

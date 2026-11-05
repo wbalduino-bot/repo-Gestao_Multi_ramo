@@ -5,25 +5,57 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
 } from '@nestjs/common';
+
+import type { Request } from 'express';
 
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 
-// Define a rota base deste controller: /auth.
+/**
+ * Define a rota base deste controller: /auth.
+ *
+ * Este controller recebe as requisições HTTP e encaminha
+ * os dados para o serviço responsável pelas regras de autenticação.
+ */
 @Controller('auth')
 export class AuthController {
-  // Injeta o serviço responsável pela lógica de autenticação.
-  constructor(private readonly authService: AuthService) {}
+  /**
+   * Injeta o serviço responsável pelo processamento do login.
+   */
+  constructor(
+    private readonly authService: AuthService,
+  ) {}
 
-  // Define o endpoint POST /auth/login.
-  // O código HTTP 200 indica que a autenticação foi realizada com sucesso.
+  /**
+   * POST /auth/login
+   *
+   * Recebe as credenciais e identifica o IP da conexão.
+   *
+   * O IP é obtido por request.ip, sem confiar diretamente
+   * no cabeçalho X-Forwarded-For enviado pelo cliente.
+   *
+   * Em ambientes com proxy reverso, a configuração de confiança
+   * deve ser definida explicitamente no servidor.
+   *
+   * O código HTTP 200 indica autenticação bem-sucedida.
+   */
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
-    // Recebe os dados enviados no corpo da requisição.
-    // O LoginDto define e valida os campos esperados.
-    // A autenticação propriamente dita fica no AuthService.
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Req() requisicao: Request,
+  ) {
+    // Obtém o endereço de origem reconhecido pelo Express.
+    const ip = requisicao.ip ?? '';
+
+    /**
+     * Encaminha credenciais e IP ao AuthService.
+     *
+     * A validação, os limites Redis, a geração do JWT
+     * e a auditoria permanecem sob responsabilidade do serviço.
+     */
+    return this.authService.login(dto, ip);
   }
 }
