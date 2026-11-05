@@ -13,6 +13,11 @@ import {
 
 import { JwtAuthGuard } from '../auth/strategies/jwt.strategy.js';
 import type { RequisicaoAutenticada } from '../auth/strategies/jwt.strategy.js';
+import { GerenciaGuard } from '../auth/guards/gerencia.guard.js';
+import {
+  perfilTemAcessoGerencial,
+  removerDadosFinanceiros,
+} from '../auth/utils/resposta-financeira.util.js';
 
 import { ProdutosService } from './produtos.service.js';
 import { CriarProdutoDto } from './dto/criar-produto.dto.js';
@@ -42,6 +47,7 @@ export class ProdutosController {
    * validado pelo guard, nunca do corpo enviado pelo frontend.
    */
   @Post()
+  @UseGuards(GerenciaGuard)
   criar(
     @Req() requisicao: RequisicaoAutenticada,
     @Body() dto: CriarProdutoDto,
@@ -55,14 +61,20 @@ export class ProdutosController {
 
   // Lista e pesquisa somente os produtos da empresa autenticada.
   @Get()
-  listar(
+  async listar(
     @Req() requisicao: RequisicaoAutenticada,
     @Query() filtros: ListarProdutosDto,
   ) {
-    return this.produtosService.listar(
+    const resultado = await this.produtosService.listar(
       requisicao.user.empresaId,
+      requisicao.user.sub,
       filtros,
     );
+
+    // O funcionário consulta produtos sem receber o custo cadastrado.
+    return perfilTemAcessoGerencial(requisicao.user.perfil)
+      ? resultado
+      : removerDadosFinanceiros(resultado);
   }
 
     /**
@@ -96,6 +108,7 @@ export class ProdutosController {
   ) {
     return this.produtosService.listarMovimentacoes(
       requisicao.user.empresaId,
+      requisicao.user.sub,
       id,
       filtros,
     );
@@ -115,6 +128,7 @@ export class ProdutosController {
   ) {
     return this.produtosService.obterResumoEstoque(
       requisicao.user.empresaId,
+      requisicao.user.sub,
     );
   }
   
@@ -128,23 +142,35 @@ export class ProdutosController {
   ) {
     return this.produtosService.listarAtividadesRecentes(
       requisicao.user.empresaId,
+      requisicao.user.sub,
     );
   }
 
   // Busca um produto pelo ID dentro da empresa autenticada.
   @Get(':id')
-  buscarPorId(
+  async buscarPorId(
     @Req() requisicao: RequisicaoAutenticada,
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
-    return this.produtosService.buscarPorId(
+    const produto = await this.produtosService.buscarPorId(
       requisicao.user.empresaId,
+      requisicao.user.sub,
       id,
     );
+
+    return perfilTemAcessoGerencial(requisicao.user.perfil)
+      ? produto
+      : removerDadosFinanceiros(produto);
   }
 
-  // Atualiza somente os campos permitidos pelo DTO.
+  /**
+   * Atualiza os dados cadastrais de um produto da empresa autenticada.
+   *
+   * Somente perfis gerenciais podem realizar alterações.
+   * A empresa e o usuário são identificados pelo JWT validado.
+   */
   @Patch(':id')
+  @UseGuards(GerenciaGuard)
   atualizar(
     @Req() requisicao: RequisicaoAutenticada,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -152,6 +178,7 @@ export class ProdutosController {
   ) {
     return this.produtosService.atualizar(
       requisicao.user.empresaId,
+      requisicao.user.sub,
       id,
       dto,
     );
@@ -159,6 +186,7 @@ export class ProdutosController {
 
   // Ativa ou desativa um produto pertencente à empresa autenticada.
   @Patch(':id/ativacao')
+  @UseGuards(GerenciaGuard)
   alterarAtivacao(
     @Req() requisicao: RequisicaoAutenticada,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -166,6 +194,7 @@ export class ProdutosController {
   ) {
     return this.produtosService.alterarAtivacao(
       requisicao.user.empresaId,
+      requisicao.user.sub,
       id,
       dto.ativo,
     );

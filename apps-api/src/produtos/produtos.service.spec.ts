@@ -1,15 +1,23 @@
-
 import {
   BadRequestException,
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 
-import { Prisma } from '@prisma/client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma, PrismaClient } from '@prisma/client';
+
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { AuditoriaService } from '../auditoria/auditoria.service.js';
 import { ProdutosService } from './produtos.service.js';
+
 import { CriarProdutoDto } from './dto/criar-produto.dto.js';
 import { AtualizarProdutoDto } from './dto/atualizar-produto.dto.js';
 import { ListarProdutosDto } from './dto/listar-produtos.dto.js';
@@ -48,6 +56,13 @@ describe('ProdutosService', () => {
     },
     saldoEstoque: {
       create: vi.fn(),
+
+      /*
+       * Disponibiliza as referências reais dos campos do Prisma.
+       * Permite testar comparações entre saldo e estoque mínimo
+       * sem executar consultas ao banco de dados.
+       */
+      fields: new PrismaClient().saldoEstoque.fields,
     },
     movimentacaoEstoque: {
       create: vi.fn(),
@@ -62,6 +77,10 @@ describe('ProdutosService', () => {
     },
     $transaction: vi.fn(),
   };
+  // Simula o serviço central de auditoria.
+  const auditoria = {
+    registrar: vi.fn(),
+  };
 
   /**
    * Simula o cliente transacional disponibilizado pelo Prisma.
@@ -69,10 +88,11 @@ describe('ProdutosService', () => {
    * Permite testar as gravações sem depender do banco de dados.
    */
   const transacao = {
-    produto: {
-      create: vi.fn(),
-      findFirst: vi.fn(),
-    },
+   produto: {
+     create: vi.fn(),
+     findFirst: vi.fn(),
+     update: vi.fn(),
+   },
     saldoEstoque: {
       create: vi.fn(),
       findFirst: vi.fn(),
@@ -118,6 +138,11 @@ describe('ProdutosService', () => {
      */
     vi.resetAllMocks();
 
+    // Simula um registro de auditoria realizado com sucesso.
+    auditoria.registrar.mockResolvedValue({
+      id: 'evento-auditoria-1',
+    });
+
     /**
      * Simula as duas formas de transação utilizadas pelo serviço:
      *
@@ -141,8 +166,9 @@ describe('ProdutosService', () => {
     // Injeta o Prisma simulado no serviço sob teste.
     service = new ProdutosService(
       prisma as unknown as PrismaService,
-    );
-  });
+      auditoria as unknown as AuditoriaService,
+     );
+    });
 
   // ============================================================
   // CADASTRO DE PRODUTOS
@@ -641,6 +667,7 @@ describe('ProdutosService', () => {
 
     const resultado = await service.listarMovimentacoes(
       'empresa-1',
+      'usuario-1',
       'produto-1',
       filtros,
     );
@@ -696,6 +723,7 @@ describe('ProdutosService', () => {
 
     const resultado = await service.listar(
       'empresa-1',
+      'usuario-1',
       filtros,
     );
 
@@ -751,7 +779,7 @@ describe('ProdutosService', () => {
   it('deve listar produtos sem retornar dados de outras empresas', async () => {
     prisma.$transaction.mockResolvedValue([[], 0]);
 
-    await service.listar('empresa-2', {
+    await service.listar('empresa-2', 'usuario-1', {
       pagina: 1,
       limite: 20,
     });
@@ -773,14 +801,454 @@ describe('ProdutosService', () => {
   });
 
   // ============================================================
+  // FILTRO POR CATEGORIA E ISOLAMENTO ENTRE EMPRESAS
+  // ============================================================
+
+  it('deve listar somente produtos da categoria validada', async () => {
+    /*
+     * A categoria precisa existir na empresa autenticada.
+     * A consulta de produtos deve manter os dois identificadores
+     * no filtro, impedindo acesso aos dados de outra empresa.
+     */
+    prisma.categoria.findFirst.mockResolvedValue({
+      id: 'categoria-1',
+    });
+
+    prisma.$transaction.mockResolvedValue([
+      [produtoExemplo],
+      1,
+    ]);
+
+    const resultado = await service.listar(
+      'empresa-1',
+      'usuario-1',
+      {
+        pagina: 1,
+        limite: 20,
+        categoriaId: 'categoria-1',
+      },
+    );
+
+    expect(prisma.categoria.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'categoria-1',
+        empresaId: 'empresa-1',
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const whereEsperado = {
+      empresaId: 'empresa-1',
+      categoriaId: 'categoria-1',
+    };
+
+    expect(prisma.produto.findMany).toHaveBeenCalledWith({
+      where: whereEsperado,
+      orderBy: {
+        nome: 'asc',
+      },
+      skip: 0,
+      take: 20,
+      include: {
+        saldoEstoque: true,
+      },
+    });
+
+    expect(prisma.produto.count).toHaveBeenCalledWith({
+      where: whereEsperado,
+    });
+
+    expect(resultado).toEqual({
+      dados: [produtoExemplo],
+      total: 1,
+      pagina: 1,
+      limite: 20,
+      totalPaginas: 1,
+    });
+
+    // A auditoria registra a presença do filtro.
+    expect(auditoria.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        empresaId: 'empresa-1',
+        acao: 'CONSULTAR_LISTA',
+        metadados: expect.objectContaining({
+          categoriaInformada: true,
+        }),
+      }),
+    );
+  });
+
+  it('deve rejeitar categoria que não pertence à empresa na listagem', async () => {
+    /*
+     * O mesmo resultado é esperado para categoria inexistente
+     * ou pertencente a outra empresa: a validação não encontra
+     * uma categoria vinculada à empresa autenticada.
+     */
+    prisma.categoria.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.listar(
+        'empresa-1',
+        'usuario-1',
+        {
+          pagina: 1,
+          limite: 20,
+          categoriaId: 'categoria-empresa-2',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.categoria.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'categoria-empresa-2',
+        empresaId: 'empresa-1',
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    // Nenhuma listagem deve ser executada após a validação falhar.
+    expect(prisma.produto.findMany).not.toHaveBeenCalled();
+    expect(prisma.produto.count).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('deve combinar categoria, situação, pesquisa e paginação', async () => {
+    /*
+     * Todos os filtros devem ser aplicados na mesma consulta.
+     * A contagem também precisa utilizar os mesmos critérios,
+     * garantindo a paginação correta dos resultados.
+     */
+    prisma.categoria.findFirst.mockResolvedValue({
+      id: 'categoria-1',
+    });
+
+    prisma.$transaction.mockResolvedValue([
+      [produtoExemplo],
+      11,
+    ]);
+
+    const resultado = await service.listar(
+      'empresa-1',
+      'usuario-1',
+      {
+        pagina: 2,
+        limite: 5,
+        categoriaId: 'categoria-1',
+        ativo: false,
+        busca: '  arroz  ',
+      },
+    );
+
+    const whereEsperado = {
+      empresaId: 'empresa-1',
+      categoriaId: 'categoria-1',
+      ativo: false,
+      OR: [
+        {
+          nome: {
+            contains: 'arroz',
+            mode: 'insensitive',
+          },
+        },
+        {
+          sku: {
+            contains: 'arroz',
+            mode: 'insensitive',
+          },
+        },
+        {
+          codigoBarras: {
+            contains: 'arroz',
+            mode: 'insensitive',
+          },
+        },
+      ],
+    };
+
+    expect(prisma.produto.findMany).toHaveBeenCalledWith({
+      where: whereEsperado,
+      orderBy: {
+        nome: 'asc',
+      },
+      skip: 5,
+      take: 5,
+      include: {
+        saldoEstoque: true,
+      },
+    });
+
+    expect(prisma.produto.count).toHaveBeenCalledWith({
+      where: whereEsperado,
+    });
+
+    expect(resultado).toEqual({
+      dados: [produtoExemplo],
+      total: 11,
+      pagina: 2,
+      limite: 5,
+      totalPaginas: 3,
+    });
+
+    expect(auditoria.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadados: expect.objectContaining({
+          categoriaInformada: true,
+          filtroAtivo: false,
+          buscaInformada: true,
+        }),
+      }),
+    );
+  });
+
+  // ============================================================
   // CONSULTA POR IDENTIFICADOR
   // ============================================================
+
+
+  // ============================================================
+  // FILTROS POR ESTADO DO ESTOQUE
+  // ============================================================
+
+  it.each([
+    {
+      estado: 'NORMAL',
+      saldoEsperado: {
+        is: {
+          quantidadeDisponivel: { gt: 0 },
+          OR: [
+            { estoqueMinimo: { lte: 0 } },
+            {
+              quantidadeDisponivel: {
+                gt: prisma.saldoEstoque.fields.estoqueMinimo,
+              },
+            },
+          ],
+        },
+      },
+    },
+    {
+      estado: 'CRITICO',
+      saldoEsperado: {
+        is: {
+          quantidadeDisponivel: {
+            gt: 0,
+            lte: prisma.saldoEstoque.fields.estoqueMinimo,
+          },
+          estoqueMinimo: { gt: 0 },
+        },
+      },
+    },
+    {
+      estado: 'SEM_ESTOQUE',
+      saldoEsperado: {
+        is: {
+          quantidadeDisponivel: { lte: 0 },
+        },
+      },
+    },
+    {
+      estado: 'SEM_SALDO',
+      saldoEsperado: {
+        is: null,
+      },
+    },
+  ] as const)(
+    'deve aplicar o filtro de estoque $estado',
+    async ({ estado, saldoEsperado }) => {
+      /*
+       * Confirma que a condição de estoque é aplicada
+       * igualmente à listagem e à contagem.
+       *
+       * A empresa autenticada permanece obrigatória.
+       */
+      prisma.$transaction.mockResolvedValue([[], 0]);
+
+      await service.listar(
+        'empresa-1',
+        'usuario-1',
+        {
+          pagina: 1,
+          limite: 20,
+          estadoEstoque: estado,
+        },
+      );
+
+      const whereEsperado = {
+        empresaId: 'empresa-1',
+        saldoEstoque: saldoEsperado,
+      };
+
+      expect(prisma.produto.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: whereEsperado,
+          skip: 0,
+          take: 20,
+        }),
+      );
+
+      expect(prisma.produto.count).toHaveBeenCalledWith({
+        where: whereEsperado,
+      });
+
+      // A auditoria identifica o filtro efetivamente solicitado.
+      expect(auditoria.registrar).toHaveBeenCalledWith(
+        expect.objectContaining({
+          empresaId: 'empresa-1',
+          acao: 'CONSULTAR_LISTA',
+          metadados: expect.objectContaining({
+            estadoEstoque: estado,
+          }),
+        }),
+      );
+    },
+  );
+
+  it('deve manter a listagem completa com filtro TODOS', async () => {
+    /*
+     * TODOS não adiciona condição de estoque.
+     * O isolamento pela empresa continua obrigatório.
+     */
+    prisma.$transaction.mockResolvedValue([[], 0]);
+
+    await service.listar(
+      'empresa-2',
+      'usuario-1',
+      {
+        pagina: 1,
+        limite: 20,
+        estadoEstoque: 'TODOS',
+      },
+    );
+
+    expect(prisma.produto.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          empresaId: 'empresa-2',
+        },
+      }),
+    );
+
+    expect(prisma.produto.count).toHaveBeenCalledWith({
+      where: {
+        empresaId: 'empresa-2',
+      },
+    });
+  });
+
+  it('deve combinar estoque critico com os demais filtros', async () => {
+    /*
+     * Verifica a combinação de todos os critérios.
+     * A mesma condição deve ser usada na listagem e na contagem,
+     * preservando a paginação e o isolamento entre empresas.
+     */
+    prisma.categoria.findFirst.mockResolvedValue({
+      id: 'categoria-1',
+    });
+
+    prisma.$transaction.mockResolvedValue([
+      [produtoExemplo],
+      11,
+    ]);
+
+    const resultado = await service.listar(
+      'empresa-1',
+      'usuario-1',
+      {
+        pagina: 2,
+        limite: 5,
+        categoriaId: 'categoria-1',
+        ativo: true,
+        busca: '  arroz  ',
+        estadoEstoque: 'CRITICO',
+      },
+    );
+
+    const whereEsperado = {
+      empresaId: 'empresa-1',
+      categoriaId: 'categoria-1',
+      ativo: true,
+      saldoEstoque: {
+        is: {
+          quantidadeDisponivel: {
+            gt: 0,
+            lte: prisma.saldoEstoque.fields.estoqueMinimo,
+          },
+          estoqueMinimo: { gt: 0 },
+        },
+      },
+      OR: [
+        {
+          nome: {
+            contains: 'arroz',
+            mode: 'insensitive',
+          },
+        },
+        {
+          sku: {
+            contains: 'arroz',
+            mode: 'insensitive',
+          },
+        },
+        {
+          codigoBarras: {
+            contains: 'arroz',
+            mode: 'insensitive',
+          },
+        },
+      ],
+    };
+
+    expect(prisma.categoria.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'categoria-1',
+        empresaId: 'empresa-1',
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    expect(prisma.produto.findMany).toHaveBeenCalledWith({
+      where: whereEsperado,
+      orderBy: { nome: 'asc' },
+      skip: 5,
+      take: 5,
+      include: { saldoEstoque: true },
+    });
+
+    expect(prisma.produto.count).toHaveBeenCalledWith({
+      where: whereEsperado,
+    });
+
+    expect(resultado).toEqual({
+      dados: [produtoExemplo],
+      total: 11,
+      pagina: 2,
+      limite: 5,
+      totalPaginas: 3,
+    });
+
+    expect(auditoria.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        empresaId: 'empresa-1',
+        metadados: expect.objectContaining({
+          estadoEstoque: 'CRITICO',
+          categoriaInformada: true,
+          buscaInformada: true,
+        }),
+      }),
+    );
+  });
 
   it('deve consultar produto dentro da empresa autenticada', async () => {
     prisma.produto.findFirst.mockResolvedValue(produtoExemplo);
 
     await expect(
-      service.buscarPorId('empresa-1', 'produto-1'),
+      service.buscarPorId('empresa-1', 'usuario-1', 'produto-1'),
     ).resolves.toEqual(produtoExemplo);
 
     // O produto e o saldo são consultados juntos.
@@ -801,6 +1269,7 @@ describe('ProdutosService', () => {
     await expect(
       service.buscarPorId(
         'empresa-1',
+        'usuario-1',
         'produto-empresa-2',
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -816,137 +1285,354 @@ describe('ProdutosService', () => {
     });
   });
 
+  it('deve registrar auditoria nas cinco consultas de produtos e estoque', async () => {
+    // Prepara respostas vazias para as listagens e um produto válido para as consultas por ID.
+    prisma.$transaction.mockResolvedValue([[], 0]);
+    prisma.produto.findMany.mockResolvedValue([]);
+    prisma.produto.findFirst.mockResolvedValue(produtoExemplo);
+    prisma.movimentacaoEstoque.findMany.mockResolvedValue([]);
+
+    await service.listar('empresa-1', 'usuario-1', {
+      pagina: 1,
+      limite: 20,
+    });
+    await service.obterResumoEstoque('empresa-1', 'usuario-1');
+    await service.buscarPorId('empresa-1', 'usuario-1', 'produto-1');
+    await service.listarAtividadesRecentes('empresa-1', 'usuario-1');
+    await service.listarMovimentacoes(
+      'empresa-1',
+      'usuario-1',
+      'produto-1',
+      { pagina: 1, limite: 20 },
+    );
+
+    // O histórico valida o produto por helper privado, sem gerar auditoria duplicada.
+    expect(auditoria.registrar).toHaveBeenCalledTimes(5);
+
+    expect(auditoria.registrar).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        empresaId: 'empresa-1',
+        atorId: 'usuario-1',
+        tipoAtor: 'USUARIO_EMPRESA',
+        modulo: 'PRODUTOS',
+        acao: 'CONSULTAR_LISTA',
+        entidade: 'PRODUTO',
+        resultado: 'SUCESSO',
+        metadados: {
+          pagina: 1,
+          limite: 20,
+          filtroAtivo: null,
+          categoriaInformada: false,
+          estadoEstoque: 'TODOS',
+          buscaInformada: false,
+          quantidadeRetornada: 0,
+          totalRegistros: 0,
+        },
+      }),
+    );
+
+    expect(auditoria.registrar).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        empresaId: 'empresa-1',
+        atorId: 'usuario-1',
+        modulo: 'ESTOQUE',
+        acao: 'CONSULTAR_RESUMO',
+        entidade: 'ESTOQUE',
+        resultado: 'SUCESSO',
+        metadados: {
+          totalProdutos: 0,
+          produtosAtivos: 0,
+          produtosInativos: 0,
+          estoqueAdequado: 0,
+          estoqueCritico: 0,
+          semEstoque: 0,
+          semSaldo: 0,
+          totalAlertas: 0,
+        },
+      }),
+    );
+
+    expect(auditoria.registrar).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        empresaId: 'empresa-1',
+        atorId: 'usuario-1',
+        modulo: 'PRODUTOS',
+        acao: 'CONSULTAR',
+        entidade: 'PRODUTO',
+        entidadeId: 'produto-1',
+        resultado: 'SUCESSO',
+      }),
+    );
+
+    expect(auditoria.registrar).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        empresaId: 'empresa-1',
+        atorId: 'usuario-1',
+        modulo: 'ESTOQUE',
+        acao: 'CONSULTAR_LISTA',
+        entidade: 'MOVIMENTACAO_ESTOQUE',
+        resultado: 'SUCESSO',
+        metadados: {
+          quantidadeRetornada: 0,
+        },
+      }),
+    );
+
+    expect(auditoria.registrar).toHaveBeenNthCalledWith(
+      5,
+      expect.objectContaining({
+        empresaId: 'empresa-1',
+        atorId: 'usuario-1',
+        modulo: 'ESTOQUE',
+        acao: 'CONSULTAR_LISTA',
+        entidade: 'MOVIMENTACAO_ESTOQUE',
+        entidadeId: 'produto-1',
+        resultado: 'SUCESSO',
+        metadados: {
+          pagina: 1,
+          limite: 20,
+          quantidadeRetornada: 0,
+          totalRegistros: 0,
+        },
+      }),
+    );
+  });
+
+  it('não deve entregar a listagem quando a gravação da auditoria falhar', async () => {
+    prisma.$transaction.mockResolvedValue([[], 0]);
+    auditoria.registrar.mockRejectedValue(
+      new Error('Auditoria indisponível'),
+    );
+
+    await expect(
+      service.listar('empresa-1', 'usuario-1', {
+        pagina: 1,
+        limite: 20,
+      }),
+    ).rejects.toThrow('Auditoria indisponível');
+  });
+
   // ============================================================
   // ATUALIZAÇÃO DE PRODUTOS
   // ============================================================
 
   it('deve atualizar somente os campos enviados', async () => {
-    prisma.produto.findFirst.mockResolvedValue(produtoExemplo);
+  transacao.produto.findFirst.mockResolvedValue(produtoExemplo);
 
-    prisma.produto.update.mockResolvedValue({
-      ...produtoExemplo,
-      nome: 'Arroz premium',
-    });
+  transacao.produto.update.mockResolvedValue({
+    ...produtoExemplo,
+    nome: 'Arroz premium',
+  });
 
-    const dto: AtualizarProdutoDto = {
-      nome: '  Arroz premium  ',
-    };
+  const dto: AtualizarProdutoDto = {
+    nome: '  Arroz premium  ',
+  };
 
-    await expect(
-      service.atualizar('empresa-1', 'produto-1', dto),
-    ).resolves.toMatchObject({
-      nome: 'Arroz premium',
-    });
+  await expect(
+    service.atualizar(
+      'empresa-1',
+      'usuario-1',
+      'produto-1',
+      dto,
+    ),
+  ).resolves.toMatchObject({
+    nome: 'Arroz premium',
+  });
 
-    // Antes da atualização, confirma o vínculo empresarial.
-    expect(prisma.produto.findFirst).toHaveBeenCalledWith({
-      where: {
-        id: 'produto-1',
+  // Confirma que o estado anterior foi consultado na transação.
+  expect(transacao.produto.findFirst).toHaveBeenCalledWith({
+    where: {
+      id: 'produto-1',
+      empresaId: 'empresa-1',
+    },
+  });
+
+  // Confirma que somente o campo informado foi atualizado.
+  expect(transacao.produto.update).toHaveBeenCalledWith({
+    where: {
+      empresaId_id: {
         empresaId: 'empresa-1',
+        id: 'produto-1',
       },
-      include: {
-        saldoEstoque: true,
-      },
-    });
-
-    // A escrita usa a chave composta da empresa e do produto.
-    expect(prisma.produto.update).toHaveBeenCalledWith({
-      where: {
-        empresaId_id: {
-          empresaId: 'empresa-1',
-          id: 'produto-1',
-        },
-      },
-      data: {
-        nome: 'Arroz premium',
-      },
-    });
+    },
+    data: {
+      nome: 'Arroz premium',
+    },
   });
 
-  it('deve impedir atualização de produto de outra empresa', async () => {
-    prisma.produto.findFirst.mockResolvedValue(null);
+  // Confirma que a auditoria participa da mesma transação.
+  expect(auditoria.registrar).toHaveBeenCalledWith(
+    expect.objectContaining({
+      empresaId: 'empresa-1',
+      atorId: 'usuario-1',
+      modulo: 'PRODUTOS',
+      acao: 'ATUALIZAR',
+      entidade: 'PRODUTO',
+      entidadeId: 'produto-1',
+      resultado: 'SUCESSO',
+    }),
+    transacao,
+  );
+});
 
-    await expect(
-      service.atualizar(
-        'empresa-1',
-        'produto-empresa-2',
-        {
-          nome: 'Tentativa de alteração',
-        },
-      ),
-    ).rejects.toBeInstanceOf(NotFoundException);
+it('deve impedir atualização de produto de outra empresa', async () => {
+  // Simula um produto que não pertence à empresa autenticada.
+  transacao.produto.findFirst.mockResolvedValue(null);
 
-    // O produto não encontrado não pode ser atualizado.
-    expect(prisma.produto.update).not.toHaveBeenCalled();
-  });
+  await expect(
+    service.atualizar(
+      'empresa-1',
+      'usuario-1',
+      'produto-empresa-2',
+      {
+        nome: 'Tentativa de alteração',
+      },
+    ),
+  ).rejects.toBeInstanceOf(NotFoundException);
 
-  it('deve rejeitar atualização sem campos informados', async () => {
-    await expect(
-      service.atualizar(
-        'empresa-1',
-        'produto-1',
-        {} as AtualizarProdutoDto,
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
+  // O produto não encontrado não pode ser atualizado.
+  expect(transacao.produto.update).not.toHaveBeenCalled();
 
-    // A validação ocorre antes de qualquer consulta ou escrita.
-    expect(prisma.produto.findFirst).not.toHaveBeenCalled();
-    expect(prisma.produto.update).not.toHaveBeenCalled();
-  });
+  // A tentativa recusada deve gerar um evento de falha.
+  expect(auditoria.registrar).toHaveBeenCalledWith(
+    expect.objectContaining({
+      empresaId: 'empresa-1',
+      atorId: 'usuario-1',
+      modulo: 'PRODUTOS',
+      acao: 'ATUALIZAR',
+      entidade: 'PRODUTO',
+      entidadeId: 'produto-empresa-2',
+      resultado: 'FALHA',
+    }),
+  );
+});
+
+it('deve rejeitar atualização sem campos informados', async () => {
+  await expect(
+    service.atualizar(
+      'empresa-1',
+      'usuario-1',
+      'produto-1',
+      {} as AtualizarProdutoDto,
+    ),
+  ).rejects.toBeInstanceOf(BadRequestException);
+
+  // A validação ocorre antes de qualquer consulta ou transação.
+  expect(prisma.$transaction).not.toHaveBeenCalled();
+  expect(transacao.produto.findFirst).not.toHaveBeenCalled();
+  expect(transacao.produto.update).not.toHaveBeenCalled();
+
+  // A tentativa recusada deve ser registrada na auditoria.
+  expect(auditoria.registrar).toHaveBeenCalledWith(
+    expect.objectContaining({
+      empresaId: 'empresa-1',
+      atorId: 'usuario-1',
+      modulo: 'PRODUTOS',
+      acao: 'ATUALIZAR',
+      entidade: 'PRODUTO',
+      entidadeId: 'produto-1',
+      resultado: 'FALHA',
+    }),
+  );
+});
 
   // ============================================================
   // ATIVAÇÃO E DESATIVAÇÃO
   // ============================================================
 
-  it('deve desativar produto utilizando a chave composta da empresa', async () => {
-    prisma.produto.update.mockResolvedValue({
-      ...produtoExemplo,
-      ativo: false,
-    });
+it('deve desativar produto utilizando a chave composta da empresa', async () => {
+  // Simula a consulta do produto dentro da transação.
+  transacao.produto.findFirst.mockResolvedValue(produtoExemplo);
 
-    await expect(
-      service.alterarAtivacao(
-        'empresa-1',
-        'produto-1',
-        false,
-      ),
-    ).resolves.toMatchObject({
-      ativo: false,
-    });
-
-    expect(prisma.produto.update).toHaveBeenCalledWith({
-      where: {
-        empresaId_id: {
-          empresaId: 'empresa-1',
-          id: 'produto-1',
-        },
-      },
-      data: {
-        ativo: false,
-      },
-    });
+  // Simula a atualização do produto.
+  transacao.produto.update.mockResolvedValue({
+    ...produtoExemplo,
+    ativo: false,
   });
 
-  it('deve retornar produto não encontrado ao alterar produto inexistente', async () => {
-    const erroInexistente =
-      new Prisma.PrismaClientKnownRequestError(
-        'Record to update not found',
-        {
-          code: 'P2025',
-          clientVersion: 'test',
-        },
-      );
-
-    prisma.produto.update.mockRejectedValue(
-      erroInexistente,
-    );
-
-    await expect(
-      service.alterarAtivacao(
-        'empresa-1',
-        'produto-inexistente',
-        false,
-      ),
-    ).rejects.toBeInstanceOf(NotFoundException);
+  await expect(
+    service.alterarAtivacao(
+      'empresa-1',
+      'usuario-1',
+      'produto-1',
+      false,
+    ),
+  ).resolves.toMatchObject({
+    ativo: false,
   });
+
+  // Confirma que o produto foi localizado na empresa correta.
+  expect(transacao.produto.findFirst).toHaveBeenCalledWith({
+    where: {
+      id: 'produto-1',
+      empresaId: 'empresa-1',
+    },
+    select: {
+      id: true,
+      nome: true,
+      ativo: true,
+    },
+  });
+
+  // Confirma a atualização utilizando a chave composta.
+  expect(transacao.produto.update).toHaveBeenCalledWith({
+    where: {
+      empresaId_id: {
+        empresaId: 'empresa-1',
+        id: 'produto-1',
+      },
+    },
+    data: {
+      ativo: false,
+    },
+  });
+
+  // Confirma que a auditoria participa da mesma transação.
+  expect(auditoria.registrar).toHaveBeenCalledWith(
+    expect.objectContaining({
+      empresaId: 'empresa-1',
+      atorId: 'usuario-1',
+      modulo: 'PRODUTOS',
+      acao: 'ALTERAR_ATIVACAO',
+      entidade: 'PRODUTO',
+      entidadeId: 'produto-1',
+      resultado: 'SUCESSO',
+    }),
+    transacao,
+  );
+});
+
+ it('deve retornar produto não encontrado ao alterar produto inexistente', async () => {
+  // Simula que o produto não existe na empresa autenticada.
+  transacao.produto.findFirst.mockResolvedValue(null);
+
+  await expect(
+    service.alterarAtivacao(
+      'empresa-1',
+      'usuario-1',
+      'produto-inexistente',
+      false,
+    ),
+  ).rejects.toBeInstanceOf(NotFoundException);
+
+  // Um produto inexistente nunca pode ser atualizado.
+  expect(transacao.produto.update).not.toHaveBeenCalled();
+
+  // A tentativa recusada deve gerar um evento de auditoria.
+  expect(auditoria.registrar).toHaveBeenCalledWith(
+    expect.objectContaining({
+      empresaId: 'empresa-1',
+      atorId: 'usuario-1',
+      modulo: 'PRODUTOS',
+      acao: 'ALTERAR_ATIVACAO',
+      entidade: 'PRODUTO',
+      entidadeId: 'produto-inexistente',
+      resultado: 'FALHA',
+    }),
+  );
+});
 });

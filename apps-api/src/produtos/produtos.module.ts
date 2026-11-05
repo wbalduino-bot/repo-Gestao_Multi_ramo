@@ -2,7 +2,9 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module.js';
+import { AuditoriaModule } from '../auditoria/auditoria.module.js';
 import { JwtAuthGuard } from '../auth/strategies/jwt.strategy.js';
+import { GerenciaGuard } from '../auth/guards/gerencia.guard.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 
 import { ProdutosController } from './produtos.controller.js';
@@ -10,16 +12,19 @@ import { ProdutosService } from './produtos.service.js';
 
 /**
  * Módulo responsável pelo cadastro, consulta e manutenção
- * dos produtos de cada empresa.
+ * dos produtos e estoques de cada empresa.
  */
 @Module({
-  // Disponibiliza JWT e acesso ao PostgreSQL via Prisma.
-  imports: [AuthModule, PrismaModule],
-
-  // Registra as rotas HTTP de produtos.
+  imports: [
+    AuthModule,
+    PrismaModule,
+    AuditoriaModule,
+  ],
   controllers: [ProdutosController],
-
-  // O guard é registrado neste módulo para poder ser injetado.
-  providers: [ProdutosService, JwtAuthGuard],
+  providers: [
+    ProdutosService,
+    JwtAuthGuard,
+    GerenciaGuard,
+  ],
 })
 export class ProdutosModule {}

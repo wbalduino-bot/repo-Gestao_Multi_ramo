@@ -2,12 +2,23 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 
-import { Prisma } from '@prisma/client';
+import {
+  Prisma,
+  ResultadoAuditoria,
+  TipoAtorAuditoria,
+} from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+
+import {
+  AuditoriaService,
+  type RegistrarEventoAuditoriaInput,
+} from '../auditoria/auditoria.service.js';
+
 import { CriarProdutoDto } from './dto/criar-produto.dto.js';
 import { AtualizarProdutoDto } from './dto/atualizar-produto.dto.js';
 import { ListarProdutosDto } from './dto/listar-produtos.dto.js';
@@ -31,8 +42,12 @@ import { ListarMovimentacoesEstoqueDto } from './dto/listar-movimentacoes-estoqu
  */
 @Injectable()
 export class ProdutosService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ProdutosService.name);
 
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditoria: AuditoriaService,
+  ) {}
   /**
    * Cadastra um produto, inicializa seu saldo e registra a movimentação
    * de entrada quando a quantidade inicial for maior que zero.
@@ -40,11 +55,12 @@ export class ProdutosService {
    * A criação do produto, do saldo e da movimentação ocorre na mesma
    * transação. Se uma das gravações falhar, nenhuma será confirmada.
    */
-  async criar(
-    empresaId: string,
-    usuarioId: string,
-    dto: CriarProdutoDto,
-  ) {
+ async criar(
+  empresaId: string,
+  usuarioId: string,
+  dto: CriarProdutoDto,
+) {
+  try {
     // Confere se as referências informadas pertencem à empresa.
     await this.validarCategoriaEUnidade(
       empresaId,
@@ -56,62 +72,99 @@ export class ProdutosService {
     const quantidadeInicial = dto.quantidadeInicial ?? 0;
     const estoqueMinimo = dto.estoqueMinimo ?? 0;
 
-    try {
-      return await this.prisma.$transaction(async (transacao) => {
-        // 1. Cria o produto vinculado à empresa autenticada.
-        const produto = await transacao.produto.create({
-          data: {
-            empresaId,
-            nome: dto.nome.trim(),
-            sku: dto.sku.trim().toUpperCase(),
-            descricao: dto.descricao?.trim() || null,
-            categoriaId: dto.categoriaId ?? null,
-            unidadeId: dto.unidadeId ?? null,
-            codigoBarras: dto.codigoBarras?.trim() || null,
-            preco: dto.preco,
-            custo: dto.custo,
-            perecivel: dto.perecivel ?? false,
-            peso: dto.peso ?? null,
-          },
-        });
+    return await this.prisma.$transaction(async (transacao) => {
+      // 1. Cria o produto vinculado à empresa autenticada.
+      const produto = await transacao.produto.create({
+        data: {
+          empresaId,
+          nome: dto.nome.trim(),
+          sku: dto.sku.trim().toUpperCase(),
+          descricao: dto.descricao?.trim() || null,
+          categoriaId: dto.categoriaId ?? null,
+          unidadeId: dto.unidadeId ?? null,
+          codigoBarras: dto.codigoBarras?.trim() || null,
+          preco: dto.preco,
+          custo: dto.custo,
+          perecivel: dto.perecivel ?? false,
+          peso: dto.peso ?? null,
+        },
+      });
 
-        // 2. Cria o saldo, mesmo quando a quantidade inicial for zero.
-        const saldoEstoque = await transacao.saldoEstoque.create({
+      // 2. Cria o saldo, mesmo quando a quantidade inicial for zero.
+      const saldoEstoque = await transacao.saldoEstoque.create({
+        data: {
+          empresaId,
+          produtoId: produto.id,
+          quantidadeDisponivel: quantidadeInicial,
+          quantidadeReservada: 0,
+          estoqueMinimo,
+        },
+      });
+
+      // 3. Registra a entrada inicial somente quando houver estoque.
+      if (quantidadeInicial > 0) {
+        await transacao.movimentacaoEstoque.create({
           data: {
             empresaId,
             produtoId: produto.id,
-            quantidadeDisponivel: quantidadeInicial,
-            quantidadeReservada: 0,
-            estoqueMinimo,
+            tipo: 'ENTRADA',
+            quantidade: quantidadeInicial,
+            saldoApos: quantidadeInicial,
+            motivo: 'Estoque inicial no cadastro do produto',
+            usuarioId,
           },
         });
+      }
 
-        // 3. Registra a entrada inicial somente quando houver estoque.
-        if (quantidadeInicial > 0) {
-          await transacao.movimentacaoEstoque.create({
-            data: {
-              empresaId,
-              produtoId: produto.id,
-              tipo: 'ENTRADA',
-              quantidade: quantidadeInicial,
-              saldoApos: quantidadeInicial,
-              motivo: 'Estoque inicial no cadastro do produto',
-              usuarioId,
-            },
-          });
-        }
+      /*
+       * 4. Registra a auditoria na mesma transação.
+       *
+       * Se a auditoria falhar, o produto, o saldo e a movimentação
+       * inicial também serão revertidos.
+       */
+      await this.auditoria.registrar(
+        {
+          empresaId,
+          atorId: usuarioId,
+          tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+          modulo: 'PRODUTOS',
+          acao: 'CRIAR',
+          entidade: 'PRODUTO',
+          entidadeId: produto.id,
+          resultado: ResultadoAuditoria.SUCESSO,
+          dadosPosteriores: {
+            nome: produto.nome,
+            sku: produto.sku,
+            preco: produto.preco.toString(),
+            custo: produto.custo.toString(),
+            ativo: produto.ativo,
+            quantidadeInicial: quantidadeInicial.toString(),
+            estoqueMinimo: estoqueMinimo.toString(),
+          },
+        },
+        transacao,
+      );
 
-        // Devolve o cadastro com o saldo de estoque criado.
-        return {
-          ...produto,
-          saldoEstoque,
-        };
-      });
-    } catch (erro) {
-      // Traduz erros conhecidos do banco em respostas HTTP apropriadas.
-      this.tratarErroPrisma(erro);
-    }
+      return {
+        ...produto,
+        saldoEstoque,
+      };
+    });
+  } catch (erro) {
+    // Registra a falha fora da transação revertida.
+    await this.registrarFalhaAuditoria({
+      empresaId,
+      atorId: usuarioId,
+      modulo: 'PRODUTOS',
+      acao: 'CRIAR',
+      entidade: 'PRODUTO',
+      motivo: this.obterClassificacaoErro(erro),
+    });
+
+    // Preserva o tratamento original dos erros do Prisma.
+    this.tratarErroPrisma(erro);
   }
+}
 
   /**
    * Lista os produtos da empresa autenticada.
@@ -124,6 +177,7 @@ export class ProdutosService {
    */
   async listar(
     empresaId: string,
+    usuarioId: string,
     filtros: ListarProdutosDto,
   ) {
     /*
@@ -148,14 +202,94 @@ export class ProdutosService {
       );
     }
 
+    /*
+     * Confirma que a categoria informada pertence à empresa autenticada.
+     * A validação existente também é utilizada no cadastro e na edição.
+     * Uma categoria de outra empresa não pode ser utilizada na consulta.
+     */
+    if (filtros.categoriaId !== undefined) {
+      await this.validarCategoriaEUnidade(
+        empresaId,
+        filtros.categoriaId,
+      );
+    }
+
     // Toda consulta deve começar restrita à empresa autenticada.
     const where: Prisma.ProdutoWhereInput = {
       empresaId,
     };
 
+    /*
+     * Filtra somente os produtos diretamente vinculados à categoria.
+     * O filtro não inclui automaticamente produtos de subcategorias.
+     */
+    if (filtros.categoriaId !== undefined) {
+      where.categoriaId = filtros.categoriaId;
+    }
+
     // Aplica o filtro de situação quando ele for informado.
     if (filtros.ativo !== undefined) {
       where.ativo = filtros.ativo;
+    }
+
+    /*
+     * Aplica o estado do estoque diretamente na consulta ao banco.
+     *
+     * As comparações entre quantidade disponível e estoque mínimo
+     * utilizam referências tipadas aos campos do mesmo registro.
+     *
+     * O filtro é aplicado antes da paginação e da contagem,
+     * preservando a consistência dos resultados.
+     */
+    const estoqueMinimo =
+      this.prisma.saldoEstoque.fields.estoqueMinimo;
+
+    switch (filtros.estadoEstoque) {
+      case 'NORMAL':
+        where.saldoEstoque = {
+          is: {
+            quantidadeDisponivel: { gt: 0 },
+            OR: [
+              { estoqueMinimo: { lte: 0 } },
+              {
+                quantidadeDisponivel: {
+                  gt: estoqueMinimo,
+                },
+              },
+            ],
+          },
+        };
+        break;
+
+      case 'CRITICO':
+        where.saldoEstoque = {
+          is: {
+            quantidadeDisponivel: {
+              gt: 0,
+              lte: estoqueMinimo,
+            },
+            estoqueMinimo: { gt: 0 },
+          },
+        };
+        break;
+
+      case 'SEM_ESTOQUE':
+        where.saldoEstoque = {
+          is: {
+            quantidadeDisponivel: { lte: 0 },
+          },
+        };
+        break;
+
+      case 'SEM_SALDO':
+        where.saldoEstoque = {
+          is: null,
+        };
+        break;
+
+      case 'TODOS':
+      case undefined:
+        break;
     }
 
     const busca = filtros.busca?.trim();
@@ -208,13 +342,34 @@ export class ProdutosService {
     ]);
 
     // Mantém o formato de resposta utilizado pelo frontend.
-    return {
+    const resultado = {
       dados,
       total,
       pagina,
       limite,
       totalPaginas: Math.ceil(total / limite),
     };
+
+    // Registra somente os filtros úteis; o texto pesquisado não é armazenado.
+    await this.registrarConsulta({
+      empresaId,
+      atorId: usuarioId,
+      modulo: 'PRODUTOS',
+      acao: 'CONSULTAR_LISTA',
+      entidade: 'PRODUTO',
+      metadados: {
+        pagina,
+        limite,
+        filtroAtivo: filtros.ativo ?? null,
+        categoriaInformada: filtros.categoriaId !== undefined,
+        estadoEstoque: filtros.estadoEstoque ?? 'TODOS',
+        buscaInformada: Boolean(busca),
+        quantidadeRetornada: dados.length,
+        totalRegistros: total,
+      },
+    });
+
+    return resultado;
   }
     /**
    * Calcula os indicadores gerais de estoque da empresa autenticada.
@@ -232,7 +387,10 @@ export class ProdutosService {
    * Os produtos sem saldo são contabilizados separadamente para
    * não gerar alertas falsos de falta de estoque.
    */
-  async obterResumoEstoque(empresaId: string) {
+  async obterResumoEstoque(
+    empresaId: string,
+    usuarioId: string,
+  ) {
     // Busca somente os campos necessários para os indicadores.
     // A consulta continua restrita à empresa autenticada.
     const produtos = await this.prisma.produto.findMany({
@@ -342,7 +500,7 @@ export class ProdutosService {
       );
     });
 
-    return {
+    const resumo = {
       totalProdutos: produtos.length,
       produtosAtivos,
       produtosInativos,
@@ -356,15 +514,35 @@ export class ProdutosService {
       // continua refletindo todos os produtos que precisam de atenção.
       alertas: alertas.slice(0, 5),
     };
+
+    await this.registrarConsulta({
+      empresaId,
+      atorId: usuarioId,
+      modulo: 'ESTOQUE',
+      acao: 'CONSULTAR_RESUMO',
+      entidade: 'ESTOQUE',
+      metadados: {
+        totalProdutos: resumo.totalProdutos,
+        produtosAtivos: resumo.produtosAtivos,
+        produtosInativos: resumo.produtosInativos,
+        estoqueAdequado: resumo.estoqueAdequado,
+        estoqueCritico: resumo.estoqueCritico,
+        semEstoque: resumo.semEstoque,
+        semSaldo: resumo.semSaldo,
+        totalAlertas: resumo.totalAlertas,
+      },
+    });
+
+    return resumo;
   }
 
   /**
    * Busca um produto pertencente à empresa autenticada.
    *
-   * A consulta não permite acessar produtos de outras empresas.
-   * O saldo é incluído quando já existe um registro correspondente.
+   * Este método privado valida o vínculo sem gerar uma segunda
+   * auditoria quando é utilizado por outra consulta do serviço.
    */
-  async buscarPorId(
+  private async buscarProdutoPorEmpresa(
     empresaId: string,
     id: string,
   ) {
@@ -388,17 +566,41 @@ export class ProdutosService {
   }
 
   /**
+   * Consulta um produto da empresa autenticada e registra o acesso.
+   */
+  async buscarPorId(
+    empresaId: string,
+    usuarioId: string,
+    id: string,
+  ) {
+    const produto = await this.buscarProdutoPorEmpresa(empresaId, id);
+
+    await this.registrarConsulta({
+      empresaId,
+      atorId: usuarioId,
+      modulo: 'PRODUTOS',
+      acao: 'CONSULTAR',
+      entidade: 'PRODUTO',
+      entidadeId: id,
+    });
+
+    return produto;
+  }
+
+  /**
    * Atualiza somente os campos enviados pelo cliente.
    *
    * Alterações cadastrais não modificam diretamente o estoque.
    * As mudanças de quantidade devem passar pelas movimentações,
    * para manter o histórico de entradas, saídas e ajustes.
    */
-  async atualizar(
-    empresaId: string,
-    id: string,
-    dto: AtualizarProdutoDto,
-  ) {
+async atualizar(
+  empresaId: string,
+  usuarioId: string,
+  id: string,
+  dto: AtualizarProdutoDto,
+) {
+  try {
     // Evita aceitar uma atualização sem campos informados.
     const recebeuCampo = [
       dto.nome,
@@ -419,9 +621,6 @@ export class ProdutosService {
       );
     }
 
-    // Confirma que o produto pertence à empresa autenticada.
-    await this.buscarPorId(empresaId, id);
-
     // Valida as referências que forem informadas.
     await this.validarCategoriaEUnidade(
       empresaId,
@@ -429,7 +628,7 @@ export class ProdutosService {
       dto.unidadeId,
     );
 
-    // Atualiza apenas os campos presentes na requisição.
+    // Atualiza apenas os campos presentes no DTO.
     const data: Prisma.ProdutoUncheckedUpdateInput = {};
 
     if (dto.nome !== undefined) {
@@ -472,9 +671,21 @@ export class ProdutosService {
       data.peso = dto.peso ?? null;
     }
 
-    try {
-      // O filtro composto mantém a atualização limitada à empresa.
-      return await this.prisma.produto.update({
+    return await this.prisma.$transaction(async (transacao) => {
+      // Busca o estado anterior dentro da própria transação.
+      const produtoAnterior = await transacao.produto.findFirst({
+        where: {
+          id,
+          empresaId,
+        },
+      });
+
+      if (!produtoAnterior) {
+        throw new NotFoundException('Produto não encontrado.');
+      }
+
+      // Mantém a atualização limitada à empresa autenticada.
+      const produtoAtualizado = await transacao.produto.update({
         where: {
           empresaId_id: {
             empresaId,
@@ -483,23 +694,84 @@ export class ProdutosService {
         },
         data,
       });
-    } catch (erro) {
-      this.tratarErroPrisma(erro);
-    }
+
+      // Registra os estados anterior e posterior da entidade.
+      await this.auditoria.registrar(
+        {
+          empresaId,
+          atorId: usuarioId,
+          tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+          modulo: 'PRODUTOS',
+          acao: 'ATUALIZAR',
+          entidade: 'PRODUTO',
+          entidadeId: id,
+          resultado: ResultadoAuditoria.SUCESSO,
+          dadosAnteriores: {
+            nome: produtoAnterior.nome,
+            sku: produtoAnterior.sku,
+            preco: produtoAnterior.preco.toString(),
+            custo: produtoAnterior.custo.toString(),
+            ativo: produtoAnterior.ativo,
+          },
+          dadosPosteriores: {
+            nome: produtoAtualizado.nome,
+            sku: produtoAtualizado.sku,
+            preco: produtoAtualizado.preco.toString(),
+            custo: produtoAtualizado.custo.toString(),
+            ativo: produtoAtualizado.ativo,
+          },
+        },
+        transacao,
+      );
+
+      return produtoAtualizado;
+    });
+  } catch (erro) {
+    await this.registrarFalhaAuditoria({
+      empresaId,
+      atorId: usuarioId,
+      modulo: 'PRODUTOS',
+      acao: 'ATUALIZAR',
+      entidade: 'PRODUTO',
+      entidadeId: id,
+      motivo: this.obterClassificacaoErro(erro),
+    });
+
+    this.tratarErroPrisma(erro);
   }
+}
 
   /**
    * Ativa ou desativa um produto sem excluí-lo do banco.
    *
    * A alteração fica restrita à empresa autenticada.
    */
-  async alterarAtivacao(
-    empresaId: string,
-    id: string,
-    ativo: boolean,
-  ) {
-    try {
-      return await this.prisma.produto.update({
+async alterarAtivacao(
+  empresaId: string,
+  usuarioId: string,
+  id: string,
+  ativo: boolean,
+) {
+  try {
+    return await this.prisma.$transaction(async (transacao) => {
+      // Consulta o estado anterior dentro da transação.
+      const produtoAnterior = await transacao.produto.findFirst({
+        where: {
+          id,
+          empresaId,
+        },
+        select: {
+          id: true,
+          nome: true,
+          ativo: true,
+        },
+      });
+
+      if (!produtoAnterior) {
+        throw new NotFoundException('Produto não encontrado.');
+      }
+
+      const produtoAtualizado = await transacao.produto.update({
         where: {
           empresaId_id: {
             empresaId,
@@ -510,10 +782,45 @@ export class ProdutosService {
           ativo,
         },
       });
-    } catch (erro) {
-      this.tratarErroPrisma(erro);
-    }
+
+      await this.auditoria.registrar(
+        {
+          empresaId,
+          atorId: usuarioId,
+          tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+          modulo: 'PRODUTOS',
+          acao: 'ALTERAR_ATIVACAO',
+          entidade: 'PRODUTO',
+          entidadeId: id,
+          resultado: ResultadoAuditoria.SUCESSO,
+          dadosAnteriores: {
+            nome: produtoAnterior.nome,
+            ativo: produtoAnterior.ativo,
+          },
+          dadosPosteriores: {
+            nome: produtoAtualizado.nome,
+            ativo: produtoAtualizado.ativo,
+          },
+        },
+        transacao,
+      );
+
+      return produtoAtualizado;
+    });
+  } catch (erro) {
+    await this.registrarFalhaAuditoria({
+      empresaId,
+      atorId: usuarioId,
+      modulo: 'PRODUTOS',
+      acao: 'ALTERAR_ATIVACAO',
+      entidade: 'PRODUTO',
+      entidadeId: id,
+      motivo: this.obterClassificacaoErro(erro),
+    });
+
+    this.tratarErroPrisma(erro);
   }
+}
 
   /**
    * Registra uma entrada, saída ou ajuste no estoque.
@@ -668,6 +975,32 @@ export class ProdutosService {
             });
 
           // Devolve a movimentação junto com o saldo atualizado.
+         // Registra a operação na auditoria central, ainda na transação.
+          await this.auditoria.registrar(
+            {
+              empresaId,
+              atorId: usuarioId,
+              tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+              modulo: 'ESTOQUE',
+              acao: dto.tipo,
+              entidade: 'PRODUTO',
+              entidadeId: produtoId,
+              resultado: ResultadoAuditoria.SUCESSO,
+              dadosPosteriores: {
+                movimentacaoId: movimentacao.id,
+                produtoId,
+                tipo: dto.tipo,
+                quantidade: quantidade.toString(),
+                saldoAnterior: saldoAtual.toString(),
+                saldoApos: saldoApos.toString(),
+                motivo,
+                referenciaId: dto.referenciaId?.trim() || null,
+              },
+            },
+            transacao,
+          );
+
+          // Devolve a movimentação junto com o saldo atualizado.
           return {
             ...movimentacao,
             saldoEstoque: saldoAtualizado,
@@ -695,6 +1028,20 @@ export class ProdutosService {
             'Consulte o saldo atualizado e tente novamente.',
         );
       }
+      await this.registrarFalhaAuditoria({
+        empresaId,
+        atorId: usuarioId,
+        modulo: 'ESTOQUE',
+        acao:
+          dto.tipo === 'ENTRADA' ||
+          dto.tipo === 'SAIDA' ||
+          dto.tipo === 'AJUSTE'
+            ? dto.tipo
+            : 'MOVIMENTAR',
+        entidade: 'PRODUTO',
+        entidadeId: produtoId,
+        motivo: this.obterClassificacaoErro(erro),
+      });
 
       // Preserva as exceções HTTP e trata os erros conhecidos do Prisma.
       this.tratarErroPrisma(erro);
@@ -709,7 +1056,10 @@ export class ProdutosService {
    * O filtro empresaId vem do contexto autenticado no controller.
    * Nenhum identificador de empresa é recebido do frontend.
    */
-  async listarAtividadesRecentes(empresaId: string) {
+  async listarAtividadesRecentes(
+    empresaId: string,
+    usuarioId: string,
+  ) {
     const movimentacoes =
       await this.prisma.movimentacaoEstoque.findMany({
         where: {
@@ -737,7 +1087,7 @@ export class ProdutosService {
       });
 
     // Converte os valores decimais para números no retorno da API.
-    return movimentacoes.map((movimentacao) => ({
+    const resultado = movimentacoes.map((movimentacao) => ({
       id: movimentacao.id,
       tipo: movimentacao.tipo,
       quantidade: Number(movimentacao.quantidade),
@@ -746,6 +1096,19 @@ export class ProdutosService {
       criadoEm: movimentacao.criadoEm,
       produto: movimentacao.produto,
     }));
+
+    await this.registrarConsulta({
+      empresaId,
+      atorId: usuarioId,
+      modulo: 'ESTOQUE',
+      acao: 'CONSULTAR_LISTA',
+      entidade: 'MOVIMENTACAO_ESTOQUE',
+      metadados: {
+        quantidadeRetornada: resultado.length,
+      },
+    });
+
+    return resultado;
   }
 
   /**
@@ -756,11 +1119,12 @@ export class ProdutosService {
    */
   async listarMovimentacoes(
     empresaId: string,
+    usuarioId: string,
     produtoId: string,
     filtros: ListarMovimentacoesEstoqueDto,
   ) {
     // Impede a consulta do histórico de produtos de outra empresa.
-    await this.buscarPorId(empresaId, produtoId);
+    await this.buscarProdutoPorEmpresa(empresaId, produtoId);
 
     /*
      * Parâmetros de query string podem chegar como texto.
@@ -810,13 +1174,30 @@ export class ProdutosService {
     ]);
 
     // Retorna os dados e os metadados da paginação.
-    return {
+    const resultado = {
       dados,
       total,
       pagina,
       limite,
       totalPaginas: Math.ceil(total / limite),
     };
+
+    await this.registrarConsulta({
+      empresaId,
+      atorId: usuarioId,
+      modulo: 'ESTOQUE',
+      acao: 'CONSULTAR_LISTA',
+      entidade: 'MOVIMENTACAO_ESTOQUE',
+      entidadeId: produtoId,
+      metadados: {
+        pagina,
+        limite,
+        quantidadeRetornada: dados.length,
+        totalRegistros: total,
+      },
+    });
+
+    return resultado;
   }
 
   /**
@@ -868,6 +1249,62 @@ export class ProdutosService {
     }
   }
 
+    /**
+   * Registra uma tentativa recusada fora da transação comercial.
+   *
+   * Uma falha na auditoria não deve substituir a exceção original
+   * que impediu a operação de negócio.
+   */
+  /**
+   * Registra consultas concluídas antes de devolver os dados ao controller.
+   *
+   * A chamada é aguardada de propósito: se a auditoria falhar, a resposta
+   * protegida não é entregue sem o respectivo registro.
+   */
+  private async registrarConsulta(
+    entrada: Omit<
+      RegistrarEventoAuditoriaInput,
+      'tipoAtor' | 'resultado'
+    >,
+  ): Promise<void> {
+    await this.auditoria.registrar({
+      ...entrada,
+      tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+      resultado: ResultadoAuditoria.SUCESSO,
+    });
+  }
+
+  private async registrarFalhaAuditoria(
+    entrada: Omit<
+      RegistrarEventoAuditoriaInput,
+      'tipoAtor' | 'resultado'
+    >,
+  ): Promise<void> {
+    try {
+      await this.auditoria.registrar({
+        ...entrada,
+        tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+        resultado: ResultadoAuditoria.FALHA,
+      });
+    } catch (erroAuditoria) {
+      this.logger.error(
+        'Não foi possível registrar a falha na auditoria de produtos/estoque.',
+        erroAuditoria instanceof Error
+          ? erroAuditoria.stack
+          : undefined,
+      );
+    }
+  }
+
+  /**
+   * Classifica a falha sem armazenar mensagens completas,
+   * dados enviados pelo cliente ou informações sensíveis.
+   */
+  private obterClassificacaoErro(erro: unknown): string {
+    return erro instanceof Error
+      ? erro.constructor.name
+      : 'ERRO_DESCONHECIDO';
+  }
   /**
    * Converte erros conhecidos do Prisma em exceções HTTP.
    *
