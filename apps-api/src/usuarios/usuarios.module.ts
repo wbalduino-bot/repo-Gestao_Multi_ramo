@@ -15,10 +15,18 @@ import { UsuariosController } from './usuarios.controller.js';
 // Importa o serviço responsável pelas regras de negócio
 // e pelas operações relacionadas aos usuários.
 import { UsuariosService } from './usuarios.service.js';
+import { PrismaModule } from '../prisma/prisma.module.js';
+import { AuditoriaModule } from '../auditoria/auditoria.module.js';
+import { GerenciaGuard } from '../auth/guards/gerencia.guard.js';
+
 
 @Module({
   // Permite utilizar os recursos exportados pelo AuthModule.
-  imports: [AuthModule],
+  imports: [
+    AuthModule,
+    PrismaModule,
+    AuditoriaModule,
+  ],
 
   // Registra o controller que recebe as requisições
   // direcionadas às rotas de usuários.
@@ -29,6 +37,7 @@ import { UsuariosService } from './usuarios.service.js';
   providers: [
     UsuariosService,
     JwtAuthGuard,
+    GerenciaGuard,
   ],
 })
 export class UsuariosModule {}
