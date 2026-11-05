@@ -17,6 +17,11 @@ import {
 import type {
   RequisicaoAutenticada,
 } from '../auth/strategies/jwt.strategy.js';
+import { GerenciaGuard } from '../auth/guards/gerencia.guard.js';
+import {
+  perfilTemAcessoGerencial,
+  removerDadosFinanceiros,
+} from '../auth/utils/resposta-financeira.util.js';
 
 import { CriarVendaDto } from './dto/criar-venda.dto.js';
 import { VendasService } from './vendas.service.js';
@@ -44,20 +49,26 @@ export class VendasController {
    * GET /vendas?formaPagamento=PIX
    */
   @Get()
-  listar(
+  async listar(
     @Req() requisicao: RequisicaoAutenticada,
     @Query() filtros: ListarVendasDto,
   ) {
-    return this.vendasService.listar(
+    const resultado = await this.vendasService.listar(
       requisicao.user.empresaId,
       filtros,
     );
+
+    // Preserva o histórico operacional sem revelar dados de custo e lucro.
+    return perfilTemAcessoGerencial(requisicao.user.perfil)
+      ? resultado
+      : removerDadosFinanceiros(resultado);
   }
     /**
    * Retorna os indicadores comerciais do dashboard.
    * A empresa é obtida exclusivamente da sessão autenticada.
    */
   @Get('dashboard/resumo')
+  @UseGuards(GerenciaGuard)
   resumoDashboard(
     @Req() requisicao: RequisicaoAutenticada,
   ) {
@@ -69,12 +80,27 @@ export class VendasController {
    * Retorna as dez atividades mais recentes da empresa autenticada.
    */
   @Get('dashboard/atividades-recentes')
-  listarAtividadesDashboard(
+  async listarAtividadesDashboard(
     @Req() requisicao: RequisicaoAutenticada,
   ) {
-    return this.vendasService.listarAtividadesDashboard(
+    const atividades = await this.vendasService.listarAtividadesDashboard(
       requisicao.user.empresaId,
     );
+
+    if (perfilTemAcessoGerencial(requisicao.user.perfil)) {
+      return atividades;
+    }
+
+    // Funcionários continuam vendo as atividades, sem o valor da venda.
+    return atividades.map((atividade) => {
+      const resposta: Record<string, unknown> = { ...atividade };
+
+      if (resposta.tipo === 'VENDA') {
+        delete resposta.valor;
+      }
+
+      return resposta;
+    });
   }
 
 
@@ -83,6 +109,7 @@ export class VendasController {
      * para o mês atual da empresa autenticada.
      */
     @Get('dashboard/analise')
+    @UseGuards(GerenciaGuard)
     analiseDashboard(
       @Req() requisicao: RequisicaoAutenticada,
     ) {
@@ -97,14 +124,18 @@ export class VendasController {
    * O serviço restringe a consulta à empresa autenticada.
    */
   @Get(':id')
-  buscarPorId(
+  async buscarPorId(
     @Req() requisicao: RequisicaoAutenticada,
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
-    return this.vendasService.buscarPorId(
+    const venda = await this.vendasService.buscarPorId(
       requisicao.user.empresaId,
       id,
     );
+
+    return perfilTemAcessoGerencial(requisicao.user.perfil)
+      ? venda
+      : removerDadosFinanceiros(venda);
   }
   /**
    * Registra uma venda e realiza a baixa do estoque.
@@ -113,14 +144,20 @@ export class VendasController {
    * pelo serviço dentro da mesma transação.
    */
   @Post()
-  criar(
+  async criar(
     @Req() requisicao: RequisicaoAutenticada,
     @Body() dto: CriarVendaDto,
   ) {
-    return this.vendasService.criar(
+    const venda = await this.vendasService.criar(
       requisicao.user.empresaId,
       requisicao.user.sub,
       dto,
     );
+
+    // A venda é registrada normalmente; os campos gerenciais são
+    // omitidos da resposta enviada aos perfis operacionais.
+    return perfilTemAcessoGerencial(requisicao.user.perfil)
+      ? venda
+      : removerDadosFinanceiros(venda);
   }
 }

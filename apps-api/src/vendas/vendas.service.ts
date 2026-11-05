@@ -3,12 +3,22 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 
-import { Prisma } from '@prisma/client';
+import {
+  Prisma,
+  ResultadoAuditoria,
+  TipoAtorAuditoria,
+} from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+
+import {
+  AuditoriaService,
+  type RegistrarEventoAuditoriaInput,
+} from '../auditoria/auditoria.service.js';
 import { CriarVendaDto } from './dto/criar-venda.dto.js';
 import { ListarVendasDto } from './dto/listar-vendas.dto.js';
 
@@ -20,7 +30,12 @@ import { ListarVendasDto } from './dto/listar-vendas.dto.js';
  */
 @Injectable()
 export class VendasService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(VendasService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditoria: AuditoriaService,
+  ) {}
 
   /**
    * Registra uma venda concluída para a empresa autenticada.
@@ -33,34 +48,36 @@ export class VendasService {
     usuarioId: string,
     dto: CriarVendaDto,
   ) {
-    if (!dto.itens?.length) {
-      throw new BadRequestException(
-        'A venda deve conter pelo menos um produto.',
-      );
-    }
-
-    const produtoIds = dto.itens.map((item) => item.produtoId);
-    const produtoIdsUnicos = [...new Set(produtoIds)];
-
-    if (produtoIds.length !== produtoIdsUnicos.length) {
-      throw new BadRequestException(
-        'Cada produto deve aparecer apenas uma vez na venda.',
-      );
-    }
-
-    // Valida as quantidades antes de iniciar a transação.
-    for (const item of dto.itens) {
-      if (
-        !Number.isFinite(item.quantidade) ||
-        item.quantidade <= 0
-      ) {
-        throw new BadRequestException(
-          'Todas as quantidades devem ser maiores que zero.',
-        );
-      }
-    }
+    let vendaIdAuditoria: string | undefined;
 
     try {
+      if (!dto.itens?.length) {
+        throw new BadRequestException(
+          'A venda deve conter pelo menos um produto.',
+        );
+      }
+
+      const produtoIds = dto.itens.map((item) => item.produtoId);
+      const produtoIdsUnicos = [...new Set(produtoIds)];
+
+      if (produtoIds.length !== produtoIdsUnicos.length) {
+        throw new BadRequestException(
+          'Cada produto deve aparecer apenas uma vez na venda.',
+        );
+      }
+
+      // Valida as quantidades antes de iniciar a transação.
+      for (const item of dto.itens) {
+        if (
+          !Number.isFinite(item.quantidade) ||
+          item.quantidade <= 0
+        ) {
+          throw new BadRequestException(
+            'Todas as quantidades devem ser maiores que zero.',
+          );
+        }
+      }
+
       return await this.prisma.$transaction(
         async (transacao) => {
           // Confirma que o usuário está ativo e pertence à empresa.
@@ -232,6 +249,8 @@ export class VendasService {
             },
           });
 
+          vendaIdAuditoria = venda.id;
+
           // Baixa os saldos e registra as saídas no histórico.
           for (const item of itensCalculados) {
             await transacao.saldoEstoque.update({
@@ -256,6 +275,29 @@ export class VendasService {
               },
             });
           }
+
+          await this.auditoria.registrar(
+            {
+              empresaId,
+              atorId: usuarioId,
+              tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+              modulo: 'VENDAS',
+              acao: 'CRIAR',
+              entidade: 'VENDA',
+              entidadeId: venda.id,
+              resultado: ResultadoAuditoria.SUCESSO,
+              dadosPosteriores: {
+                formaPagamento: venda.formaPagamento,
+                total: venda.total.toString(),
+                quantidadeItens: venda.itens.length,
+              },
+              metadados: {
+                quantidadeProdutos: itensCalculados.length,
+                estoqueBaixado: true,
+              },
+            },
+            transacao,
+          );
 
           // Retorna os valores em formato apropriado para a API.
           // Calcula os indicadores de cada item e da venda recém-criada.
@@ -292,6 +334,18 @@ export class VendasService {
         },
       );
     } catch (erro) {
+      await this.registrarFalhaAuditoria({
+        empresaId,
+        atorId: usuarioId,
+        modulo: 'VENDAS',
+        acao: 'CRIAR',
+        entidade: 'VENDA',
+        ...(vendaIdAuditoria
+          ? { entidadeId: vendaIdAuditoria }
+          : {}),
+        motivo: this.obterClassificacaoErro(erro),
+      });
+
       // O PostgreSQL pode rejeitar uma transação concorrente.
       if (
         erro instanceof Prisma.PrismaClientKnownRequestError &&
@@ -1212,4 +1266,37 @@ export class VendasService {
       margemBrutaPercentual,
     };
   }
+  /**
+   * Registra uma falha fora da transação comercial revertida.
+   * Uma falha secundária de auditoria não substitui o erro original.
+   */
+  private async registrarFalhaAuditoria(
+    entrada: Omit<
+      RegistrarEventoAuditoriaInput,
+      'tipoAtor' | 'resultado'
+    >,
+  ): Promise<void> {
+    try {
+      await this.auditoria.registrar({
+        ...entrada,
+        tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+        resultado: ResultadoAuditoria.FALHA,
+      });
+    } catch (erroAuditoria) {
+      this.logger.error(
+        'Não foi possível registrar a falha na auditoria de vendas.',
+        erroAuditoria instanceof Error
+          ? erroAuditoria.stack
+          : undefined,
+      );
+    }
+  }
+
+  /** Classifica a falha sem armazenar mensagens ou dados sensíveis. */
+  private obterClassificacaoErro(erro: unknown): string {
+    return erro instanceof Error
+      ? erro.constructor.name
+      : 'ERRO_DESCONHECIDO';
+  }
+
 }

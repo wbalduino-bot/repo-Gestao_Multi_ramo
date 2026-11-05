@@ -5,10 +5,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import { Prisma } from '@prisma/client';
+import {
+  Prisma,
+  ResultadoAuditoria,
+  TipoAtorAuditoria,
+} from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { AuditoriaService } from '../auditoria/auditoria.service.js';
 import { CriarVendaDto } from './dto/criar-venda.dto.js';
 import { VendasService } from './vendas.service.js';
 
@@ -30,6 +35,10 @@ describe('VendasService', () => {
 
   const prisma = {
     $transaction: vi.fn(),
+  };
+
+  const auditoria = {
+    registrar: vi.fn(),
   };
 
   const transacao = {
@@ -56,6 +65,7 @@ describe('VendasService', () => {
     nome: 'Arroz tipo 1',
     sku: 'ALM-001',
     preco: new Prisma.Decimal('25.00'),
+    custo: new Prisma.Decimal('15.00'),
   };
 
   const saldoExemplo = {
@@ -85,6 +95,7 @@ describe('VendasService', () => {
         produtoId: 'produto-1',
         quantidade: new Prisma.Decimal('2'),
         precoUnitario: new Prisma.Decimal('25.00'),
+        custoUnitario: new Prisma.Decimal('15.00'),
         subtotal: new Prisma.Decimal('50.00'),
         produto: {
           id: 'produto-1',
@@ -97,6 +108,9 @@ describe('VendasService', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    auditoria.registrar.mockResolvedValue({
+      id: 'evento-auditoria-1',
+    });
 
     // Simula uma transação interativa do Prisma.
     prisma.$transaction.mockImplementation(
@@ -115,6 +129,7 @@ describe('VendasService', () => {
 
     service = new VendasService(
       prisma as unknown as PrismaService,
+      auditoria as unknown as AuditoriaService,
     );
   });
 
@@ -244,6 +259,28 @@ describe('VendasService', () => {
     expect(
       chamadaMovimentacao.data.saldoApos.toString(),
     ).toBe('8');
+
+    // A auditoria de sucesso deve participar da transação comercial.
+    expect(auditoria.registrar).toHaveBeenCalledTimes(1);
+
+    const [eventoSucesso, clienteTransacional] =
+      auditoria.registrar.mock.calls[0] as unknown as [
+        Record<string, unknown>,
+        unknown,
+      ];
+
+    expect(eventoSucesso).toMatchObject({
+      empresaId: 'empresa-1',
+      atorId: 'usuario-1',
+      tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+      modulo: 'VENDAS',
+      acao: 'CRIAR',
+      entidade: 'VENDA',
+      entidadeId: 'venda-1',
+      resultado: ResultadoAuditoria.SUCESSO,
+    });
+
+    expect(clienteTransacional).toBe(transacao);
   });
 
   it('deve rejeitar uma venda quando o estoque for insuficiente', async () => {
@@ -270,6 +307,20 @@ describe('VendasService', () => {
     expect(
       transacao.movimentacaoEstoque.create,
     ).not.toHaveBeenCalled();
+
+    expect(auditoria.registrar).toHaveBeenCalledTimes(1);
+
+    const chamadaFalha = auditoria.registrar.mock.calls[0];
+    expect(chamadaFalha).toHaveLength(1);
+    expect(chamadaFalha[0]).toMatchObject({
+      empresaId: 'empresa-1',
+      atorId: 'usuario-1',
+      tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+      modulo: 'VENDAS',
+      acao: 'CRIAR',
+      entidade: 'VENDA',
+      resultado: ResultadoAuditoria.FALHA,
+    });
   });
 
   it('deve rejeitar produtos que não pertencem à empresa ou estão inativos', async () => {
@@ -373,4 +424,77 @@ describe('VendasService', () => {
     expect(transacao.venda.create).not.toHaveBeenCalled();
     expect(transacao.saldoEstoque.update).not.toHaveBeenCalled();
   });
+  it('deve propagar a falha da auditoria transacional e registrar a falha fora da transação', async () => {
+    prepararCenarioValido();
+
+    auditoria.registrar.mockRejectedValueOnce(
+      new Error('Falha ao registrar auditoria de sucesso'),
+    );
+
+    const dto: CriarVendaDto = {
+      formaPagamento: 'PIX',
+      itens: [
+        {
+          produtoId: 'produto-1',
+          quantidade: 2,
+        },
+      ],
+    };
+
+    await expect(
+      service.criar('empresa-1', 'usuario-1', dto),
+    ).rejects.toThrow('Falha ao registrar auditoria de sucesso');
+
+    expect(auditoria.registrar).toHaveBeenCalledTimes(2);
+
+    const primeiraChamada =
+      auditoria.registrar.mock.calls[0] as unknown as [
+        Record<string, unknown>,
+        unknown,
+      ];
+
+    expect(primeiraChamada[0]).toMatchObject({
+      modulo: 'VENDAS',
+      acao: 'CRIAR',
+      resultado: ResultadoAuditoria.SUCESSO,
+    });
+    expect(primeiraChamada[1]).toBe(transacao);
+
+    const segundaChamada =
+      auditoria.registrar.mock.calls[1];
+
+    expect(segundaChamada).toHaveLength(1);
+    expect(segundaChamada[0]).toMatchObject({
+      modulo: 'VENDAS',
+      acao: 'CRIAR',
+      entidadeId: 'venda-1',
+      resultado: ResultadoAuditoria.FALHA,
+      motivo: 'Error',
+    });
+  });
+
+  it('deve preservar o erro original quando o registro da falha na auditoria também falhar', async () => {
+    prepararCenarioValido('10');
+
+    auditoria.registrar.mockRejectedValueOnce(
+      new Error('Auditoria temporariamente indisponível'),
+    );
+
+    const dto: CriarVendaDto = {
+      formaPagamento: 'DINHEIRO',
+      itens: [
+        {
+          produtoId: 'produto-1',
+          quantidade: 11,
+        },
+      ],
+    };
+
+    await expect(
+      service.criar('empresa-1', 'usuario-1', dto),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(auditoria.registrar).toHaveBeenCalledTimes(1);
+  });
+
 });
