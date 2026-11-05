@@ -1,20 +1,42 @@
+
 services:
-  postgres:
-    image: postgres:16-alpine
+  # Nova instância PostgreSQL 18.
+  # Receberá uma cópia do banco original do Windows.
+  postgres18:
+    image: postgres:18.6
+    env_file:
+      - ../gestao-comercial-backups/postgres18.env
     environment:
-      POSTGRES_DB: gestao
-      POSTGRES_USER: gestao
-      POSTGRES_PASSWORD: [REDACTED]
+      # Cria o banco com UTF8 e localidade brasileira via ICU.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=pt-BR"
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18 utiliza o diretório pai para armazenamento persistente.
+      - postgres18_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gestao -d gestao"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  # PostgreSQL exclusivo para os testes de integração E2E.
+  # Utiliza credenciais, porta e armazenamento independentes do banco principal.
+  postgres-e2e:
+    image: postgres:18.6
+    env_file:
+      - ./apps-api/.env.e2e
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - postgres_e2e_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gestao_e2e -d gestao_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Redis utilizado pelo controle de tentativas de autenticação.
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -24,5 +46,11 @@ services:
       - redis_data:/data
 
 volumes:
-  postgres_data:
+  # Volume independente para o PostgreSQL 18.
+  postgres18_data:
+
+  # Volume independente do PostgreSQL exclusivo dos testes E2E.
+  postgres_e2e_data:
+
+  # Volume original do Redis.
   redis_data:

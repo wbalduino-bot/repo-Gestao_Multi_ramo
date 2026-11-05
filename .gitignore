@@ -21,3 +21,9 @@ pnpm-debug.log*
 *.db
 .DS_Store
 Thumbs.db
+
+# Backups locais criados durante o desenvolvimento
+.backup-*/
+*.bak
+*.bak-*
+*.backup-*
