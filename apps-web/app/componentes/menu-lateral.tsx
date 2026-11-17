@@ -171,7 +171,11 @@ export function MenuLateral({
       <footer className={styles.rodape}>
         <div className={styles.ambiente}>
           <span className={styles.pontoOnline} aria-hidden="true" />
-          <span>Ambiente de desenvolvimento</span>
+          <span>
+            {process.env.NODE_ENV === "production"
+              ? "Ambiente de produção"
+              : "Ambiente de desenvolvimento"}
+          </span>
         </div>
 
         {/* Reutiliza o encerramento de sessão já existente. */}
