@@ -79,6 +79,7 @@ export class UsuariosController {
       usuarioId: contexto.usuarioId,
       empresaId: contexto.empresaId,
       perfil: contexto.perfil,
+      ...(requisicao.user.trial ? { trial: requisicao.user.trial } : {}),
     };
   }
 

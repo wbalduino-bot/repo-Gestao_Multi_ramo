@@ -419,27 +419,56 @@ describe('Usuários (e2e)', () => {
 
       usuariosCriados.push(criado.body.id);
 
-      const tokenNovo = await obterToken(empresaAId, email);
+      const novaSenha = senhaTeste === '86427531' ? '73186425' : '86427531';
+      const login = (senha: string) =>
+        request(app.getHttpServer())
+          .post('/auth/login')
+          .send({ empresaId: empresaAId, email, senha });
+
+      expect((await usuarioNoBanco(criado.body.id)).deveTrocarSenha).toBe(true);
+
+      const primeiroAcesso = await login(senhaTeste).expect(200);
+      expect(primeiroAcesso.body).toMatchObject({
+        requerTrocaSenha: true,
+        tokenPrimeiroAcesso: expect.any(String),
+      });
+      expect(primeiroAcesso.body.accessToken).toBeUndefined();
+
+      const tokenTemporario = primeiroAcesso.body.tokenPrimeiroAcesso;
+      await get(tokenTemporario, '/usuarios/me').expect(401);
+
+      const trocarSenha = (senha: string) =>
+        request(app.getHttpServer())
+          .post('/auth/primeiro-acesso')
+          .set('Authorization', `Bearer ${tokenTemporario}`)
+          .send({ novaSenha: senha });
+
+      await trocarSenha(novaSenha.slice(0, 7)).expect(400);
+      await trocarSenha(novaSenha).expect(204);
+
+      expect((await usuarioNoBanco(criado.body.id)).deveTrocarSenha).toBe(false);
+      await login(senhaTeste).expect(401);
+
+      const sessao = await login(novaSenha).expect(200);
+      expect(sessao.body.accessToken).toEqual(expect.any(String));
+      const tokenNovo = sessao.body.accessToken;
       await get(tokenNovo, '/usuarios/me').expect(200);
 
       await patch(tokenAdminA, `/usuarios/${criado.body.id}/ativacao`, {
         ativo: false,
       }).expect(200);
 
-      // O token antigo deixa de valer e um novo login é recusado.
+      // A desativação invalida a sessão e impede login com a senha atual.
       await get(tokenNovo, '/usuarios/me').expect(401);
+      await login(novaSenha).expect(401);
 
-      await request(app.getHttpServer())
-        .post('/auth/login')
-        .send({ empresaId: empresaAId, email, senha: senhaTeste })
-        .expect(401);
-
-      // Reativação restabelece o acesso.
       await patch(tokenAdminA, `/usuarios/${criado.body.id}/ativacao`, {
         ativo: true,
       }).expect(200);
 
-      await obterToken(empresaAId, email);
+      const sessaoReativada = await login(novaSenha).expect(200);
+      expect(sessaoReativada.body.accessToken).toEqual(expect.any(String));
+      await get(sessaoReativada.body.accessToken, '/usuarios/me').expect(200);
     });
 
     it('deve consultar e atualizar usuário da própria empresa', async () => {

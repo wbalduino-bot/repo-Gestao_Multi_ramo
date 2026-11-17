@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma, ResultadoAuditoria, TipoAtorAuditoria } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditoriaService } from '../auditoria/auditoria.service.js';
+import { criarUnidadeNaTransacao } from './criar-unidade-na-transacao.js';
 import { CriarUnidadeDto } from './dto/criar-unidade.dto.js';
 import { EditarUnidadeDto } from './dto/editar-unidade.dto.js';
 
@@ -24,24 +25,9 @@ export class UnidadesService {
   /** A restrição única [empresaId, codigo] impede duplicações concorrentes. */
   async criar(empresaId: string, atorId: string, dto: CriarUnidadeDto) {
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const unidade = await tx.unidade.create({
-          data: { empresaId, codigo: dto.codigo, nome: dto.nome },
-          select: { id: true, codigo: true, nome: true },
-        });
-        await this.auditoria.registrar({
-          empresaId,
-          atorId,
-          tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
-          modulo: 'UNIDADES',
-          acao: 'CRIAR',
-          entidade: 'UNIDADE',
-          entidadeId: unidade.id,
-          resultado: ResultadoAuditoria.SUCESSO,
-          dadosPosteriores: { codigo: unidade.codigo, nome: unidade.nome },
-        }, tx);
-        return unidade;
-      });
+      return await this.prisma.$transaction((tx) =>
+        criarUnidadeNaTransacao(tx, this.auditoria, empresaId, atorId, dto),
+      );
     } catch (erro) {
       if (erro instanceof Prisma.PrismaClientKnownRequestError && erro.code === 'P2002') {
         throw new ConflictException('Já existe uma unidade com esse código nesta empresa.');

@@ -79,6 +79,6 @@ import { JwtAuthGuard } from './strategies/jwt.strategy.js';
   ],
 
   // Permite que outros módulos utilizem o serviço JWT.
-  exports: [JwtModule],
+  exports: [JwtModule, LoginRateLimitService],
 })
 export class AuthModule {}

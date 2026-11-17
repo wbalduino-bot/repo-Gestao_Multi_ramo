@@ -1,11 +1,14 @@
 
 import {
+  BadRequestException,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 
+import { consultarTrialEmpresa } from '../empresas/trial-empresa.js';
 import { JwtService } from '@nestjs/jwt';
+import { createHash } from 'node:crypto';
 
 import {
   ResultadoAuditoria,
@@ -19,10 +22,25 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AplicacaoLogger } from '../logging/logger.service.js';
 
 import { LoginDto } from './dto/login.dto.js';
+import { TrocarSenhaInicialDto } from './dto/trocar-senha-inicial.dto.js';
 
 import { LoginRateLimitService } from './login-rate-limit.service.js';
 
 import type { ReservaTentativaLogin } from './login-rate-limit.service.js';
+
+const AUDIENCIA_PRIMEIRO_ACESSO = 'gestao:troca-senha-inicial';
+const VALIDADE_PRIMEIRO_ACESSO = 300;
+
+type DadosPrimeiroAcesso = {
+  sub: string;
+  empresaId: string;
+  vinculo: string;
+};
+
+/** Vincula a autorização à credencial atual sem colocar o hash Argon2 no token. */
+function vincularCredencial(hashSenha: string): string {
+  return createHash('sha256').update(hashSenha).digest('base64url');
+}
 
 /**
  * Serviço responsável pela autenticação dos usuários empresariais.
@@ -200,6 +218,9 @@ export class AuthService {
           id: true,
           nome: true,
           ativo: true,
+          modalidadeAcesso: true,
+          trialIniciadoEm: true,
+          trialTerminaEm: true,
         },
       });
 
@@ -286,14 +307,45 @@ export class AuthService {
        * O sub representa o identificador do usuário autenticado.
        * O empresaId identifica a empresa à qual o usuário pertence.
        */
+      if (consultarTrialEmpresa(empresa).bloqueado) {
+        await this.registrarFalhaLogin(dto.empresaId);
+        throw new UnauthorizedException({ codigo: 'TRIAL_EXPIRADO', message: 'Periodo de teste encerrado. Entre em contato com o administrador do sistema para liberar o acesso.' });
+      }
+
       const payload = {
         sub: usuario.id,
         empresaId: usuario.empresaId,
         perfil: usuario.perfil,
       };
 
-      // Gera o token utilizando a configuração do JwtModule.
-      const accessToken = await this.jwtService.signAsync(payload);
+      // A autorização inicial não contém as permissões de uma sessão empresarial.
+      const sessao = usuario.deveTrocarSenha
+        ? {
+            requerTrocaSenha: true as const,
+            tokenPrimeiroAcesso: await this.jwtService.signAsync({
+              sub: usuario.id,
+              empresaId: usuario.empresaId,
+              vinculo: vincularCredencial(usuario.hashSenha),
+            }, {
+              audience: AUDIENCIA_PRIMEIRO_ACESSO,
+              expiresIn: VALIDADE_PRIMEIRO_ACESSO,
+            }),
+            tokenType: 'Bearer',
+            expiresIn: VALIDADE_PRIMEIRO_ACESSO,
+          }
+        : {
+            accessToken: await this.jwtService.signAsync(payload),
+            tokenType: 'Bearer',
+            expiresIn: 900,
+            usuario: {
+              id: usuario.id,
+              empresaId: usuario.empresaId,
+              empresaNome: empresa.nome,
+              nome: usuario.nome,
+              email: usuario.email,
+              perfil: usuario.perfil,
+            },
+          };
 
       /**
        * A senha foi confirmada, portanto esta requisição
@@ -325,19 +377,7 @@ export class AuthService {
       this.registrarEventoSeguranca(ResultadoAuditoria.SUCESSO);
 
       // Retorna exclusivamente os dados públicos do usuário.
-      return {
-        accessToken,
-        tokenType: 'Bearer',
-        expiresIn: 900,
-        usuario: {
-          id: usuario.id,
-          empresaId: usuario.empresaId,
-          empresaNome: empresa.nome,
-          nome: usuario.nome,
-          email: usuario.email,
-          perfil: usuario.perfil,
-        },
-      };
+      return sessao;
     } catch (erro) {
       /**
        * Credenciais recusadas permanecem contabilizadas.
@@ -352,5 +392,89 @@ export class AuthService {
       // Preserva o erro original para o tratamento HTTP do NestJS.
       throw erro;
     }
+  }
+
+  /**
+   * Troca a senha usando uma autorização curta, exclusiva do primeiro acesso.
+   * A comparação na escrita impede que duas requisições consumam a mesma autorização.
+   */
+  async trocarSenhaInicial(
+    authorization: string | undefined,
+    dto: TrocarSenhaInicialDto,
+  ): Promise<void> {
+    const mensagem = 'Autorização de primeiro acesso inválida ou expirada.';
+    const token = authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length).trim()
+      : '';
+
+    if (!token) throw new UnauthorizedException(mensagem);
+
+    let payload: DadosPrimeiroAcesso;
+    try {
+      payload = await this.jwtService.verifyAsync<DadosPrimeiroAcesso>(token, {
+        audience: AUDIENCIA_PRIMEIRO_ACESSO,
+      });
+    } catch {
+      throw new UnauthorizedException(mensagem);
+    }
+
+    if (
+      typeof payload.sub !== 'string' ||
+      typeof payload.empresaId !== 'string' ||
+      typeof payload.vinculo !== 'string'
+    ) {
+      throw new UnauthorizedException(mensagem);
+    }
+
+    const contaPendente = {
+      id: payload.sub,
+      empresaId: payload.empresaId,
+      ativo: true,
+      deveTrocarSenha: true,
+      empresa: { is: { ativo: true } },
+    };
+    const usuario = await this.prisma.usuario.findFirst({
+      where: contaPendente,
+      select: { id: true, empresaId: true, hashSenha: true, empresa: {
+        select: { modalidadeAcesso: true, trialIniciadoEm: true, trialTerminaEm: true },
+      } },
+    });
+
+    if (!usuario || vincularCredencial(usuario.hashSenha) !== payload.vinculo) {
+      throw new UnauthorizedException(mensagem);
+    }
+
+    if (consultarTrialEmpresa(usuario.empresa).bloqueado) {
+      throw new UnauthorizedException({ codigo: 'TRIAL_EXPIRADO', message: 'Periodo de teste encerrado. Entre em contato com o administrador do sistema.' });
+    }
+
+    if (await argon2.verify(usuario.hashSenha, dto.novaSenha)) {
+      throw new BadRequestException('Escolha uma senha diferente da senha temporária.');
+    }
+
+    const novoHash = await argon2.hash(dto.novaSenha);
+    await this.prisma.$transaction(async (transacao) => {
+      const alteracao = await transacao.usuario.updateMany({
+        where: { ...contaPendente, hashSenha: usuario.hashSenha, empresa: { is: {
+          ativo: true, OR: [
+            { modalidadeAcesso: 'DEFINITIVO' },
+            { modalidadeAcesso: 'TRIAL', trialIniciadoEm: { lte: new Date() }, trialTerminaEm: { gt: new Date() } },
+          ],
+        } } },
+        data: { hashSenha: novoHash, deveTrocarSenha: false },
+      });
+
+      if (alteracao.count !== 1) throw new UnauthorizedException(mensagem);
+
+      // A troca e sua auditoria são confirmadas juntas, sem dados da credencial.
+      await this.auditoria.registrar({
+        empresaId: usuario.empresaId,
+        atorId: usuario.id,
+        tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+        modulo: 'AUTH',
+        acao: 'TROCAR_SENHA_PRIMEIRO_ACESSO',
+        resultado: ResultadoAuditoria.SUCESSO,
+      }, transacao);
+    });
   }
 }

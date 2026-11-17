@@ -17,7 +17,7 @@ import {
  * O empresaId não faz parte deste DTO: ele será obtido
  * exclusivamente do usuário autenticado.
  */
-export class CriarProdutoDto {
+export class DadosNovoProdutoDto {
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim() : value,
   )
@@ -60,25 +60,6 @@ export class CriarProdutoDto {
   @IsString()
   @MaxLength(100)
   codigoBarras?: string | null;
-
-  // Converte o valor recebido para número e rejeita valores inválidos.
-  @Transform(({ value }) => {
-    if (value === undefined) return undefined;
-    if (value === null || value === '') return Number.NaN;
-    return Number(value);
-  })
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  preco!: number;
-
-  @Transform(({ value }) => {
-    if (value === undefined) return undefined;
-    if (value === null || value === '') return Number.NaN;
-    return Number(value);
-  })
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  custo!: number;
 
   @IsOptional()
   @IsBoolean()
@@ -133,4 +114,25 @@ export class CriarProdutoDto {
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   estoqueMinimo?: number;
+}
+
+export class CriarProdutoDto extends DadosNovoProdutoDto {
+  // Converte o valor recebido para número e rejeita valores inválidos.
+  @Transform(({ value }) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return Number.NaN;
+    return Number(value);
+  })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  preco!: number;
+
+  @Transform(({ value }) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return Number.NaN;
+    return Number(value);
+  })
+  @IsNumber({ maxDecimalPlaces: 6 })
+  @Min(0)
+  custo!: number;
 }

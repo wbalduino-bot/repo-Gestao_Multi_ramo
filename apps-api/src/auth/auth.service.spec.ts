@@ -144,6 +144,7 @@ describe('AuthService', () => {
    * Empresa fictícia utilizada nos cenários de login.
    */
   const empresaAtiva = {
+    modalidadeAcesso: 'DEFINITIVO', trialIniciadoEm: null, trialTerminaEm: null,
     id: 'empresa-1',
     nome: 'Empresa de Teste',
     ativo: true,
@@ -319,6 +320,9 @@ describe('AuthService', () => {
         id: true,
         nome: true,
         ativo: true,
+        modalidadeAcesso: true,
+        trialIniciadoEm: true,
+        trialTerminaEm: true,
       },
     });
 

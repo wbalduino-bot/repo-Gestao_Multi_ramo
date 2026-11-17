@@ -10,9 +10,9 @@ import { useRouter } from "next/navigation";
 import { MenuLateral } from "../componentes/menu-lateral";
 import styles from "./cadastros-produtos.module.css";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5433").replace(/\/$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
 
-type Categoria = { id: string; nome: string; categoriaPaiId: string | null };
+type Categoria = { id: string; nome: string; categoriaPaiId: string | null; percentualAcrescimo?: string | number | null };
 type Unidade = { id: string; codigo: string; nome: string };
 type RespostaErro = { message?: string | string[] };
 type Sessao = { perfil: string };
@@ -49,10 +49,12 @@ export default function CadastrosProdutosPage() {
   const [sucesso, setSucesso] = useState("");
   const [nomeCategoria, setNomeCategoria] = useState("");
   const [categoriaPaiId, setCategoriaPaiId] = useState("");
+  const [percentualCategoria, setPercentualCategoria] = useState("43");
   // Edição isolada do formulário de inclusão; não altera o cadastro até salvar.
   const [categoriaEditandoId, setCategoriaEditandoId] = useState<string | null>(null);
   const [nomeCategoriaEdicao, setNomeCategoriaEdicao] = useState("");
   const [paiCategoriaEdicao, setPaiCategoriaEdicao] = useState("");
+  const [percentualCategoriaEdicao, setPercentualCategoriaEdicao] = useState("");
   const [codigoUnidade, setCodigoUnidade] = useState("");
   const [nomeUnidade, setNomeUnidade] = useState("");
   // Edição separada do cadastro; não modifica a unidade até o usuário salvar.
@@ -136,9 +138,11 @@ export default function CadastrosProdutosPage() {
         body: JSON.stringify({
           nome: nomeCategoria.trim(),
           ...(categoriaPaiId ? { categoriaPaiId } : {}),
+          ...(percentualCategoria === "" ? {} : { percentualAcrescimo: Number(percentualCategoria) }),
         }),
       });
       setNomeCategoria(""); setCategoriaPaiId("");
+      setPercentualCategoria("43");
       setSucesso("Categoria cadastrada com sucesso.");
       await carregar();
     } catch (falha) {
@@ -151,6 +155,7 @@ export default function CadastrosProdutosPage() {
     setCategoriaEditandoId(categoria.id);
     setNomeCategoriaEdicao(categoria.nome);
     setPaiCategoriaEdicao(categoria.categoriaPaiId ?? "");
+    setPercentualCategoriaEdicao(String(categoria.percentualAcrescimo ?? ""));
     setErro("");
     setSucesso("");
   }
@@ -166,15 +171,22 @@ export default function CadastrosProdutosPage() {
     setErro("");
     setSucesso("");
     try {
-      await requisitar(`/categorias/${encodeURIComponent(categoriaEditandoId)}`, {
+      const resultado = await requisitar(`/categorias/${encodeURIComponent(categoriaEditandoId)}`, {
         method: "PATCH",
         body: JSON.stringify({
           nome: nomeCategoriaEdicao.trim(),
           categoriaPaiId: paiCategoriaEdicao || null,
+          ...(percentualCategoriaEdicao === "" ? {} : { percentualAcrescimo: Number(percentualCategoriaEdicao) }),
         }),
       });
       setCategoriaEditandoId(null);
-      setSucesso("Categoria atualizada com sucesso.");
+      const quantidade = resultado && typeof resultado === "object" &&
+        "produtosRecalculados" in resultado && typeof resultado.produtosRecalculados === "number"
+        ? resultado.produtosRecalculados
+        : null;
+      setSucesso(quantidade === null
+        ? "Categoria atualizada com sucesso."
+        : "Categoria atualizada. Produtos recalculados: " + quantidade + ".");
       await carregar();
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Não foi possível editar a categoria.");
@@ -254,7 +266,7 @@ export default function CadastrosProdutosPage() {
           <p>Organize o catálogo e as unidades de controle dos produtos da sua empresa.</p>
         </header>
         {verificando ? <p>Verificando permissões...</p> : !autorizado ? (
-          <p role="alert" className={styles.erro}>Acesso restrito a administradores e gerentes. {erro}</p>
+          <p role="alert" className={styles.erro}>{erro || "Acesso restrito a administradores e gerentes."}</p>
         ) : (
           <>
             {erro && <p role="alert" className={styles.erro}>{erro}</p>}
@@ -264,6 +276,11 @@ export default function CadastrosProdutosPage() {
                 <h2 id="titulo-categorias">Categorias</h2>
                 <p>Crie categorias principais ou subcategorias.</p>
                 <form onSubmit={criarCategoria} className={styles.formulario}>
+                  <label>Acréscimo sobre o custo (%)
+                    <input type="number" min="0" max="10000" step="0.01"
+                      value={percentualCategoria} onChange={(e) => setPercentualCategoria(e.target.value)}
+                      placeholder="Ex.: 43" disabled={!!salvando} />
+                  </label>
                   <label>Nome da categoria
                     <input required maxLength={150} value={nomeCategoria} onChange={(e) => setNomeCategoria(e.target.value)} placeholder="Ex.: Bebidas" disabled={!!salvando} />
                   </label>
@@ -290,6 +307,11 @@ export default function CadastrosProdutosPage() {
                         {categoriaEditandoId === categoria.id && (
                           <form onSubmit={salvarEdicaoCategoria} className={styles.formulario}
                             style={{ marginTop: 12, padding: 12, border: "1px solid #dce5f0", borderRadius: 8 }}>
+                            <label>Acréscimo sobre o custo (%)
+                              <input type="number" min="0" max="10000" step="0.01"
+                                value={percentualCategoriaEdicao} onChange={(e) => setPercentualCategoriaEdicao(e.target.value)}
+                                placeholder="Ex.: 43" disabled={!!salvando} />
+                            </label>
                             <label>Nome da categoria
                               <input required maxLength={150} value={nomeCategoriaEdicao}
                                 onChange={(e) => setNomeCategoriaEdicao(e.target.value)} disabled={!!salvando} />

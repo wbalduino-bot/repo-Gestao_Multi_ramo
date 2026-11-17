@@ -185,3 +185,31 @@
   .auditoriaIndicador { padding: 15px 18px; }
   .cabecalhoDireito { flex-wrap: wrap; }
 }
+
+.dadosFiscaisIniciais {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 0.75rem;
+}
+
+.dadosFiscaisIniciais > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.dadosFiscaisIniciais > summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 0.2rem;
+}
+
+.dadosFiscaisIniciais > p {
+  margin: 0.65rem 0 0.85rem;
+}
+
+.camposFiscaisIniciais {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.75rem;
+}

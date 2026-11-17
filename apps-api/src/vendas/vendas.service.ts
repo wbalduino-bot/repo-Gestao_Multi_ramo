@@ -1,3 +1,7 @@
+import * as argon2 from 'argon2';
+import { LoginRateLimitService } from '../auth/login-rate-limit.service.js';
+import { prepararOperacaoVenda, consultarVendaDaOperacao, type OperacaoVenda } from './operacao-venda.js';
+import { consultarUnidadesVenda, validarUnidadeEQuantidadeVenda } from './unidades-venda.js';
 import {
   BadRequestException,
   ConflictException,
@@ -14,11 +18,13 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { movimentarLotes } from '../produtos/movimentar-lotes.js';
 
 import {
   AuditoriaService,
   type RegistrarEventoAuditoriaInput,
 } from '../auditoria/auditoria.service.js';
+import { calcularSaldoHistoricoVenda } from './saldo-historico-venda.js';
 import { CriarVendaDto } from './dto/criar-venda.dto.js';
 import { ListarVendasDto } from './dto/listar-vendas.dto.js';
 
@@ -35,6 +41,7 @@ export class VendasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoria: AuditoriaService,
+    private readonly loginRateLimit: LoginRateLimitService,
   ) {}
 
   /**
@@ -47,10 +54,22 @@ export class VendasService {
     empresaId: string,
     usuarioId: string,
     dto: CriarVendaDto,
+    ipOrigem = 'sem-ip',
   ) {
     let vendaIdAuditoria: string | undefined;
+    let operacao: OperacaoVenda | undefined;
 
     try {
+      operacao = prepararOperacaoVenda(dto);
+      const percentualDesconto = dto.percentualDesconto ?? 0;
+      if (!Number.isFinite(percentualDesconto) || percentualDesconto < 0 ||
+          percentualDesconto > 5 || !/^\d(?:\.\d{1,2})?$/.test(String(percentualDesconto))) {
+        throw new BadRequestException('O desconto deve estar entre 0 e 5%, com ate duas casas decimais.');
+      }
+      if (percentualDesconto === 0 &&
+          (dto.autorizadorEmail !== undefined || dto.senhaAutorizador !== undefined)) {
+        throw new BadRequestException('Autorizacao permitida somente quando ha desconto.');
+      }
       if (!dto.itens?.length) {
         throw new BadRequestException(
           'A venda deve conter pelo menos um produto.',
@@ -78,6 +97,16 @@ export class VendasService {
         }
       }
 
+      // Apenas pagamentos em dinheiro aceitam valor recebido.
+      if (
+        dto.formaPagamento !== 'DINHEIRO' &&
+        dto.valorRecebido !== undefined
+      ) {
+        throw new BadRequestException(
+          'O valor recebido é permitido somente para pagamentos em dinheiro.',
+        );
+      }
+
       return await this.prisma.$transaction(
         async (transacao) => {
           // Confirma que o usuário está ativo e pertence à empresa.
@@ -90,6 +119,7 @@ export class VendasService {
             select: {
               id: true,
               nome: true,
+              perfil: true,
             },
           });
 
@@ -97,6 +127,14 @@ export class VendasService {
             throw new ForbiddenException(
               'O usuário não está ativo ou não pertence à empresa autenticada.',
             );
+          }
+
+          // Reenvio nao consulta precos atuais nem movimenta estoque.
+          if (operacao) {
+            const vendaAnteriorId = await consultarVendaDaOperacao(
+              transacao, empresaId, usuarioId, operacao,
+            );
+            if (vendaAnteriorId) return { ...await this.buscarPorId(empresaId, vendaAnteriorId), empresaId };
           }
 
           // Busca somente produtos ativos da empresa autenticada.
@@ -114,6 +152,7 @@ export class VendasService {
               sku: true,
               preco: true,
               custo: true,
+              unidadeId: true,
             },
           });
 
@@ -122,6 +161,10 @@ export class VendasService {
               'Um ou mais produtos não foram encontrados, estão inativos ou não pertencem à empresa autenticada.',
             );
           }
+
+          const unidadesVenda = await consultarUnidadesVenda(
+            transacao, empresaId, produtos.map(produto => produto.unidadeId),
+          );
 
           const produtosPorId = new Map(
             produtos.map((produto) => [produto.id, produto]),
@@ -154,6 +197,10 @@ export class VendasService {
                 'Produto não encontrado nesta empresa.',
               );
             }
+
+            validarUnidadeEQuantidadeVenda(
+              produto.nome, produto.unidadeId, unidadesVenda, itemDto.quantidade,
+            );
 
             if (!saldo) {
               throw new BadRequestException(
@@ -211,13 +258,102 @@ export class VendasService {
             )
             .toDecimalPlaces(2);
 
+          // A regra depende do perfil ATUAL no banco, e nao do perfil
+          // informado pelo navegador ou de um JWT desatualizado.
+          // Reenvios concluidos sao recuperados antes desta verificacao.
+          let autorizadorDescontoId: string | null = null;
+          if (percentualDesconto > 0) {
+            if (usuario.perfil === 'ADMINISTRADOR' || usuario.perfil === 'GERENTE') {
+              // A propria sessao autenticada autoriza o desconto.
+              // Nenhuma senha extra ou consulta ao limitador e necessaria.
+              autorizadorDescontoId = usuario.id;
+            } else {
+              const email = dto.autorizadorEmail?.trim().toLowerCase();
+              const senha = dto.senhaAutorizador;
+              if (!email || !senha || senha.length > 256 || email.length > 254) {
+                throw new ForbiddenException('Informe o e-mail e a senha de um administrador para autorizar o desconto.');
+              }
+              // Limites Redis por origem e identidade; tentativas incorretas
+              // permanecem contabilizadas por 15 minutos.
+              const reserva = await this.loginRateLimit.reservarTentativa(
+                empresaId, email, ipOrigem,
+              );
+              let senhaValida = false;
+              let admin: { id: string; hashSenha: string } | null = null;
+              try {
+                admin = await transacao.usuario.findFirst({
+                  where: { empresaId, email, perfil: 'ADMINISTRADOR', ativo: true,
+                    deveTrocarSenha: false },
+                  select: { id: true, hashSenha: true },
+                });
+                // O hash nunca sai desta funcao, e nao e registrado em auditoria.
+                senhaValida = admin !== null && await argon2.verify(admin.hashSenha, senha);
+              } catch (erro) {
+                await reserva.liberar(); // falha interna nao consome tentativa
+                throw erro;
+              }
+              if (!senhaValida || !admin) {
+                throw new ForbiddenException('Autorizacao administrativa invalida.');
+              }
+              autorizadorDescontoId = admin.id;
+              await reserva.liberar();
+            }
+          }
+
+          const subtotalOriginal = total;
+          const valorDesconto = subtotalOriginal
+            .mul(percentualDesconto).div(100).toDecimalPlaces(2);
+          const totalComDesconto = subtotalOriginal.minus(valorDesconto);
+
+          // Calcula o recebimento com base no total definitivo da API.
+          // O campo permanece opcional durante a transicao do frontend.
+          let valorRecebido: Prisma.Decimal | null = null;
+          let troco: Prisma.Decimal | null = null;
+
+          if (
+            dto.formaPagamento === 'DINHEIRO' &&
+            dto.valorRecebido !== undefined
+          ) {
+            if (
+              typeof dto.valorRecebido !== 'number' ||
+              !Number.isFinite(dto.valorRecebido) ||
+              dto.valorRecebido < 0
+            ) {
+              throw new BadRequestException(
+                'Informe um valor recebido válido.',
+              );
+            }
+
+            valorRecebido = new Prisma.Decimal(
+              dto.valorRecebido.toString(),
+            );
+
+            if (
+              valorRecebido.decimalPlaces() > 2 ||
+              valorRecebido.lessThan(totalComDesconto)
+            ) {
+              throw new BadRequestException(
+                'O valor recebido deve ser igual ou superior ao total da venda.',
+              );
+            }
+
+            troco = valorRecebido.minus(totalComDesconto).toDecimalPlaces(2);
+          }
+
           // Registra a venda e seus itens.
           const venda = await transacao.venda.create({
             data: {
               empresaId,
               usuarioId,
+              ...(operacao ? { chaveOperacao: operacao.chave, hashRequisicao: operacao.hash } : {}),
               formaPagamento: dto.formaPagamento,
-              total,
+              total: totalComDesconto,
+              subtotalOriginal,
+              percentualDesconto: new Prisma.Decimal(percentualDesconto),
+              valorDesconto,
+              autorizadorDescontoId,
+              valorRecebido,
+              troco,
               itens: {
                 create: itensCalculados.map((item) => ({
                   produtoId: item.produto.id,
@@ -262,7 +398,7 @@ export class VendasService {
               },
             });
 
-            await transacao.movimentacaoEstoque.create({
+            const movimentacao = await transacao.movimentacaoEstoque.create({
               data: {
                 empresaId,
                 produtoId: item.produto.id,
@@ -274,6 +410,11 @@ export class VendasService {
                 usuarioId,
               },
             });
+            await movimentarLotes(
+              transacao,
+              movimentacao,
+              item.quantidade.negated(),
+            );
           }
 
           await this.auditoria.registrar(
@@ -289,6 +430,10 @@ export class VendasService {
               dadosPosteriores: {
                 formaPagamento: venda.formaPagamento,
                 total: venda.total.toString(),
+                subtotalOriginal: subtotalOriginal.toString(),
+                percentualDesconto,
+                valorDesconto: valorDesconto.toString(),
+                autorizadorDescontoId,
                 quantidadeItens: venda.itens.length,
               },
               metadados: {
@@ -321,6 +466,14 @@ export class VendasService {
             empresaId: venda.empresaId,
             formaPagamento: venda.formaPagamento,
             total: Number(venda.total),
+            subtotalOriginal: Number(subtotalOriginal),
+            percentualDesconto,
+            valorDesconto: Number(valorDesconto),
+            autorizadorDescontoId,
+            valorRecebido: valorRecebido === null
+              ? null
+              : Number(valorRecebido),
+            troco: troco === null ? null : Number(troco),
             criadoEm: venda.criadoEm,
             usuario: venda.usuario,
             ...resumoFinanceiro,
@@ -334,6 +487,15 @@ export class VendasService {
         },
       );
     } catch (erro) {
+      // A chave unica do banco arbitra duas confirmacoes concorrentes.
+      // So recupera a venda se empresa, usuario e hash coincidirem.
+      if (operacao && erro instanceof Prisma.PrismaClientKnownRequestError &&
+          (erro.code === 'P2002' || erro.code === 'P2034')) {
+        const vendaAnteriorId = await consultarVendaDaOperacao(
+          this.prisma, empresaId, usuarioId, operacao, true,
+        );
+        if (vendaAnteriorId) return { ...await this.buscarPorId(empresaId, vendaAnteriorId), empresaId };
+      }
       await this.registrarFalhaAuditoria({
         empresaId,
         atorId: usuarioId,
@@ -1016,6 +1178,12 @@ export class VendasService {
           id: true,
           formaPagamento: true,
           total: true,
+          subtotalOriginal: true,
+          percentualDesconto: true,
+          valorDesconto: true,
+          autorizadorDescontoId: true,
+          valorRecebido: true,
+          troco: true,
           criadoEm: true,
           usuario: {
             select: {
@@ -1030,9 +1198,28 @@ export class VendasService {
           },
           itens: {
             select: {
+              id: true,
               quantidade: true,
               subtotal: true,
               custoUnitario: true,
+            },
+          },
+          estornos: {
+            orderBy: { criadoEm: 'asc' },
+            select: {
+              id: true,
+              criadoEm: true,
+              justificativa: true,
+              totalEstornado: true,
+              usuario: { select: { id: true, nome: true } },
+              itens: {
+                select: {
+                  itemVendaId: true,
+                  quantidade: true,
+                  valorEstornado: true,
+                  itemVenda: { select: { produto: { select: { nome: true } } } },
+                },
+              },
             },
           },
         },
@@ -1044,16 +1231,31 @@ export class VendasService {
     ]);
 
     return {
-      dados: dados.map((venda) => ({
+      dados: dados.map((venda) => {
+        const saldo = calcularSaldoHistoricoVenda(venda);
+        return {
         id: venda.id,
         formaPagamento: venda.formaPagamento,
         total: Number(venda.total),
+        subtotalOriginal: Number(venda.subtotalOriginal),
+        percentualDesconto: Number(venda.percentualDesconto),
+        valorDesconto: Number(venda.valorDesconto),
+        autorizadorDescontoId: venda.autorizadorDescontoId,
+        valorRecebido: venda.valorRecebido === null
+          ? null
+          : Number(venda.valorRecebido),
+        troco: venda.troco === null
+          ? null
+          : Number(venda.troco),
         criadoEm: venda.criadoEm,
         usuario: venda.usuario,
         quantidadeItens: venda._count.itens,
-        ...this.calcularResumoFinanceiroVenda(venda.total,venda.itens),
-
-      })),
+        valorEstornado: Number(saldo.valorEstornado),
+        totalLiquido: Number(saldo.totalLiquido),
+        estornos: this.resumirEstornos(venda.estornos),
+        ...this.calcularResumoFinanceiroVenda(saldo.totalLiquido, saldo.itensLiquidos),
+      };
+      }),
       total,
       pagina,
       limite,
@@ -1064,6 +1266,23 @@ export class VendasService {
   /**
    * Busca os detalhes de uma venda pertencente à empresa autenticada.
    */
+  /** Recupera somente operacoes do usuario e empresa autenticados. */
+  async buscarPorOperacao(empresaId: string, usuarioId: string, chave: string) {
+    if (typeof chave !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(chave)) {
+      throw new BadRequestException('Chave de operacao invalida.');
+    }
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { id: usuarioId, empresaId, ativo: true }, select: { id: true },
+    });
+    if (!usuario) throw new ForbiddenException('Usuario nao esta ativo nesta empresa.');
+    const registro = await this.prisma.venda.findFirst({
+      where: { empresaId, usuarioId, chaveOperacao: chave.toLowerCase() }, select: { id: true },
+    });
+    // Ausencia nao prova falha: a primeira confirmacao pode estar em andamento.
+    if (!registro) return { situacao: 'NAO_LOCALIZADA' as const };
+    return { situacao: 'CONCLUIDA' as const, venda: await this.buscarPorId(empresaId, registro.id) };
+  }
+
   async buscarPorId(
     empresaId: string,
     vendaId: string,
@@ -1077,6 +1296,12 @@ export class VendasService {
         id: true,
         formaPagamento: true,
         total: true,
+        subtotalOriginal: true,
+        percentualDesconto: true,
+        valorDesconto: true,
+        autorizadorDescontoId: true,
+        valorRecebido: true,
+        troco: true,
         criadoEm: true,
         usuario: {
           select: {
@@ -1100,6 +1325,24 @@ export class VendasService {
             },
           },
         },
+        estornos: {
+          orderBy: { criadoEm: 'asc' },
+          select: {
+            id: true,
+            criadoEm: true,
+            justificativa: true,
+            totalEstornado: true,
+            usuario: { select: { id: true, nome: true } },
+            itens: {
+              select: {
+                itemVendaId: true,
+                quantidade: true,
+                valorEstornado: true,
+                itemVenda: { select: { produto: { select: { nome: true } } } },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -1110,32 +1353,79 @@ export class VendasService {
     }
 
 
-  // Calcula os indicadores financeiros de cada item histórico.
+  const saldo = calcularSaldoHistoricoVenda(venda);
+
+  // O item no comprovante continua historico; a quantidade liquida e informada separadamente.
   const itensComFinanceiro = venda.itens.map((item) => ({
     id: item.id,
     produto: item.produto,
     quantidade: Number(item.quantidade),
     precoUnitario: Number(item.precoUnitario),
     subtotal: Number(item.subtotal),
+    quantidadeEstornada: Number(saldo.quantidadesEstornadas.get(item.id) ?? 0),
+    quantidadeLiquida: Number(item.quantidade.minus(saldo.quantidadesEstornadas.get(item.id) ?? 0)),
     ...this.calcularFinanceiroItemVenda(item),
   }));
 
     // Calcula o resumo financeiro da venda usando os mesmos custos históricos.
     const resumoFinanceiro = this.calcularResumoFinanceiroVenda(
-      venda.total,
-      venda.itens,
+      saldo.totalLiquido,
+      saldo.itensLiquidos,
     );
       return {
       id: venda.id,
       formaPagamento: venda.formaPagamento,
       total: Number(venda.total),
+      subtotalOriginal: Number(venda.subtotalOriginal),
+      percentualDesconto: Number(venda.percentualDesconto),
+      valorDesconto: Number(venda.valorDesconto),
+      autorizadorDescontoId: venda.autorizadorDescontoId,
+      valorRecebido: venda.valorRecebido === null
+        ? null
+        : Number(venda.valorRecebido),
+      troco: venda.troco === null
+        ? null
+        : Number(venda.troco),
       criadoEm: venda.criadoEm,
       usuario: venda.usuario,
+      valorEstornado: Number(saldo.valorEstornado),
+      totalLiquido: Number(saldo.totalLiquido),
+      estornos: this.resumirEstornos(venda.estornos),
       ...resumoFinanceiro,
       itens: itensComFinanceiro,
     };
   }
   
+  /** Estornos preservam o total original e nao comprovam reembolso financeiro. */
+  private resumirEstornos(estornos: Array<{
+    id: string;
+    criadoEm: Date;
+    justificativa: string;
+    totalEstornado: Prisma.Decimal;
+    usuario: { id: string; nome: string };
+    itens: Array<{
+      itemVendaId: string;
+      quantidade: Prisma.Decimal;
+      valorEstornado: Prisma.Decimal;
+      itemVenda: { produto: { nome: string } };
+    }>;
+  }>) {
+    return estornos.map((estorno) => ({
+      id: estorno.id,
+      criadoEm: estorno.criadoEm,
+      justificativa: estorno.justificativa,
+      valorEstornado: Number(estorno.totalEstornado),
+      usuario: estorno.usuario,
+      itens: estorno.itens.map((item) => ({
+        itemVendaId: item.itemVendaId,
+        nomeProduto: item.itemVenda.produto.nome,
+        quantidade: Number(item.quantidade),
+        valorEstornado: Number(item.valorEstornado),
+      })),
+      reembolsoFinanceiro: 'NAO_REGISTRADO' as const,
+    }));
+  }
+
   /**
    * Calcula o custo total e o lucro bruto de um item da venda.
    * Utiliza exclusivamente o custo histórico registrado na transação.

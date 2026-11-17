@@ -16,6 +16,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditoriaService } from '../auditoria/auditoria.service.js';
 import { CriarVendaDto } from './dto/criar-venda.dto.js';
 import { VendasService } from './vendas.service.js';
+import type { LoginRateLimitService } from '../auth/login-rate-limit.service.js';
+import * as argon2 from 'argon2';
 
 /**
  * Testes unitários do VendasService.
@@ -40,6 +42,8 @@ describe('VendasService', () => {
   const auditoria = {
     registrar: vi.fn(),
   };
+  const liberarReserva = vi.fn();
+  const loginRateLimit = { reservarTentativa: vi.fn() };
 
   const transacao = {
     usuario: {
@@ -56,6 +60,22 @@ describe('VendasService', () => {
       create: vi.fn(),
     },
     movimentacaoEstoque: {
+      create: vi.fn((
+        { data }: { data: Prisma.MovimentacaoEstoqueUncheckedCreateInput },
+      ): unknown => ({
+        ...data,
+        id: 'movimentacao-1',
+        criadoEm: new Date('2026-11-07T12:00:00Z'),
+      })),
+    },
+    loteEstoque: {
+      create: vi.fn(() => ({ id: 'lote-1' })),
+      findMany: vi.fn(() => [
+        { id: 'lote-1', quantidadeRestante: new Prisma.Decimal('10') },
+      ]),
+      update: vi.fn(),
+    },
+    movimentacaoLoteEstoque: {
       create: vi.fn(),
     },
   };
@@ -111,6 +131,8 @@ describe('VendasService', () => {
     auditoria.registrar.mockResolvedValue({
       id: 'evento-auditoria-1',
     });
+    liberarReserva.mockResolvedValue(undefined);
+    loginRateLimit.reservarTentativa.mockResolvedValue({ liberar: liberarReserva });
 
     // Simula uma transação interativa do Prisma.
     prisma.$transaction.mockImplementation(
@@ -130,6 +152,7 @@ describe('VendasService', () => {
     service = new VendasService(
       prisma as unknown as PrismaService,
       auditoria as unknown as AuditoriaService,
+      loginRateLimit as unknown as LoginRateLimitService,
     );
   });
 
@@ -167,11 +190,310 @@ describe('VendasService', () => {
       quantidadeDisponivel: new Prisma.Decimal('8'),
     });
 
-    transacao.movimentacaoEstoque.create.mockResolvedValue({
+    transacao.movimentacaoEstoque.create.mockImplementation(({ data }) => ({
+      ...data,
       id: 'movimentacao-1',
-      tipo: 'SAIDA',
-    });
+      criadoEm: new Date('2026-11-07T12:00:00Z'),
+    }));
   }
+
+  it.each(['ADMINISTRADOR', 'GERENTE'] as const)(
+    '%s aplica desconto direto sem senha, registra sua identidade e baixa estoque',
+    async perfil => {
+      prepararCenarioValido();
+      transacao.usuario.findFirst.mockResolvedValue({
+        id: 'usuario-1', nome: 'Gestor', perfil,
+      });
+      transacao.venda.create.mockImplementation(async ({ data }: { data: { total: Prisma.Decimal } }) => ({
+        ...vendaPersistida, total: data.total,
+      }));
+      const resultado = await service.criar('empresa-1', 'usuario-1', {
+        formaPagamento: 'DINHEIRO', valorRecebido: 50,
+        percentualDesconto: 5,
+        itens: [{ produtoId: 'produto-1', quantidade: 2 }],
+      }, '127.0.0.1');
+      expect(resultado.total).toBe(47.5);
+      expect(resultado.troco).toBe(2.5);
+      const data = (transacao.venda.create.mock.calls[0][0] as {
+        data: { autorizadorDescontoId: string; percentualDesconto: Prisma.Decimal }
+      }).data;
+      expect(data.autorizadorDescontoId).toBe('usuario-1');
+      expect(data.percentualDesconto.toString()).toBe('5');
+      expect(loginRateLimit.reservarTentativa).not.toHaveBeenCalled();
+      expect(transacao.usuario.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ empresaId: 'empresa-1', ativo: true }),
+        select: expect.objectContaining({ perfil: true }),
+      }));
+      expect(auditoria.registrar).toHaveBeenCalledWith(expect.objectContaining({
+        dadosPosteriores: expect.objectContaining({ autorizadorDescontoId: 'usuario-1' }),
+      }), transacao);
+      expect(transacao.saldoEstoque.update).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['CAIXA', 'ATENDENTE', 'GARCOM'] as const)(
+    '%s nao pode aplicar desconto sem senha administrativa', async perfil => {
+      prepararCenarioValido();
+      transacao.usuario.findFirst.mockResolvedValue({ id: 'usuario-1', nome: 'Operador', perfil });
+      await expect(service.criar('empresa-1', 'usuario-1', {
+        formaPagamento: 'PIX', percentualDesconto: 5,
+        itens: [{ produtoId: 'produto-1', quantidade: 2 }],
+      })).rejects.toBeInstanceOf(ForbiddenException);
+      expect(transacao.venda.create).not.toHaveBeenCalled();
+      expect(transacao.saldoEstoque.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('aplica desconto de 5% com senha administrativa valida, auditando e preservando estoque', async () => {
+    prepararCenarioValido();
+    const hashSenha = await argon2.hash('SenhaAdministrativaDeTeste#2026');
+    transacao.usuario.findFirst.mockImplementation(async ({ where }: { where: { perfil?: string } }) =>
+      where.perfil === 'ADMINISTRADOR'
+        ? { id: 'administrador-1', hashSenha }
+        : { id: 'usuario-1', nome: 'Operador de caixa' },
+    );
+    transacao.venda.create.mockImplementation(async ({ data }: { data: { total: Prisma.Decimal } }) => ({
+      ...vendaPersistida,
+      total: data.total,
+    }));
+    const resultado = await service.criar('empresa-1', 'usuario-1', {
+      formaPagamento: 'DINHEIRO', valorRecebido: 50,
+      percentualDesconto: 5,
+      autorizadorEmail: 'admin@empresa.com',
+      senhaAutorizador: 'SenhaAdministrativaDeTeste#2026',
+      itens: [{ produtoId: 'produto-1', quantidade: 2 }],
+    }, '127.0.0.1');
+    expect(resultado.total).toBe(47.5);
+    expect(resultado.subtotalOriginal).toBe(50);
+    expect(resultado.valorDesconto).toBe(2.5);
+    expect(resultado.troco).toBe(2.5);
+    expect(loginRateLimit.reservarTentativa).toHaveBeenCalledWith('empresa-1', 'admin@empresa.com', '127.0.0.1');
+    expect(liberarReserva).toHaveBeenCalledTimes(1);
+    const data = (transacao.venda.create.mock.calls[0][0] as { data: { total: Prisma.Decimal; autorizadorDescontoId: string } }).data;
+    expect(data.autorizadorDescontoId).toBe('administrador-1');
+    expect(data.total.toString()).toBe('47.5');
+    expect(JSON.stringify(auditoria.registrar.mock.calls)).not.toContain('SenhaAdministrativaDeTeste#2026');
+    expect(transacao.saldoEstoque.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejeita senha errada sem criar venda nem baixar estoque', async () => {
+    prepararCenarioValido();
+    const hashSenha = await argon2.hash('SenhaCorreta#2026');
+    transacao.usuario.findFirst.mockImplementation(async ({ where }: { where: { perfil?: string } }) =>
+      where.perfil === 'ADMINISTRADOR' ? { id: 'admin', hashSenha }
+        : { id: 'usuario-1', nome: 'Operador' },
+    );
+    await expect(service.criar('empresa-1', 'usuario-1', {
+      formaPagamento: 'PIX', percentualDesconto: 3,
+      autorizadorEmail: 'admin@empresa.com', senhaAutorizador: 'SenhaErrada',
+      itens: [{ produtoId: 'produto-1', quantidade: 2 }],
+    }, '127.0.0.1')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(liberarReserva).not.toHaveBeenCalled();
+    expect(transacao.venda.create).not.toHaveBeenCalled();
+    expect(transacao.saldoEstoque.update).not.toHaveBeenCalled();
+  });
+
+  it.each([-1, 5.01, 8, Number.NaN])('rejeita desconto invalido %s', async percentualDesconto => {
+    prepararCenarioValido();
+    await expect(service.criar('empresa-1', 'usuario-1', {
+      formaPagamento: 'PIX', percentualDesconto,
+      itens: [{ produtoId: 'produto-1', quantidade: 2 }],
+    })).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Confirma que o total definitivo é calculado pelo backend
+   * e que valor recebido e troco são persistidos na venda.
+   */
+  it('deve calcular o troco de um pagamento em dinheiro', async () => {
+    prepararCenarioValido();
+
+    // Duas unidades a R$ 43,75 totalizam R$ 87,50.
+    transacao.produto.findMany.mockResolvedValue([
+      {
+        ...produtoExemplo,
+        preco: new Prisma.Decimal('43.75'),
+      },
+    ]);
+
+    transacao.venda.create.mockResolvedValue({
+      ...vendaPersistida,
+      formaPagamento: 'DINHEIRO',
+      total: new Prisma.Decimal('87.50'),
+    });
+
+    const dto: CriarVendaDto = {
+      formaPagamento: 'DINHEIRO',
+      valorRecebido: 100,
+      itens: [
+        {
+          produtoId: 'produto-1',
+          quantidade: 2,
+        },
+      ],
+    };
+
+    const resultado = await service.criar(
+      'empresa-1',
+      'usuario-1',
+      dto,
+    );
+
+    expect(resultado.total).toBe(87.5);
+    expect(resultado.valorRecebido).toBe(100);
+    expect(resultado.troco).toBe(12.5);
+
+    // Confirma os valores enviados ao Prisma para persistência.
+    const chamada = transacao.venda.create.mock.calls[0][0] as {
+      data: {
+        total: Prisma.Decimal;
+        valorRecebido: Prisma.Decimal;
+        troco: Prisma.Decimal;
+      };
+    };
+
+    expect(chamada.data.total.toString()).toBe('87.5');
+    expect(chamada.data.valorRecebido.toString()).toBe('100');
+    expect(chamada.data.troco.toString()).toBe('12.5');
+
+    expect(transacao.saldoEstoque.update).toHaveBeenCalledTimes(1);
+    expect(transacao.movimentacaoEstoque.create).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Um pagamento exato deve registrar troco zero,
+   * sem confundir esse resultado com ausência de pagamento.
+   */
+  it('deve registrar troco zero para pagamento exato', async () => {
+    prepararCenarioValido();
+
+    transacao.venda.create.mockResolvedValue({
+      ...vendaPersistida,
+      formaPagamento: 'DINHEIRO',
+    });
+
+    const resultado = await service.criar(
+      'empresa-1',
+      'usuario-1',
+      {
+        formaPagamento: 'DINHEIRO',
+        valorRecebido: 50,
+        itens: [
+          {
+            produtoId: 'produto-1',
+            quantidade: 2,
+          },
+        ],
+      },
+    );
+
+    expect(resultado.valorRecebido).toBe(50);
+    expect(resultado.troco).toBe(0);
+
+    const chamada = transacao.venda.create.mock.calls[0][0] as {
+      data: { troco: Prisma.Decimal };
+    };
+
+    expect(chamada.data.troco.toString()).toBe('0');
+  });
+
+  /**
+   * Uma quantia insuficiente deve impedir a criação
+   * da venda e qualquer baixa de estoque.
+   */
+  it('deve rejeitar dinheiro insuficiente sem baixar estoque', async () => {
+    prepararCenarioValido();
+
+    await expect(
+      service.criar(
+        'empresa-1',
+        'usuario-1',
+        {
+          formaPagamento: 'DINHEIRO',
+          valorRecebido: 40,
+          itens: [
+            {
+              produtoId: 'produto-1',
+              quantidade: 2,
+            },
+          ],
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(transacao.venda.create).not.toHaveBeenCalled();
+    expect(transacao.saldoEstoque.update).not.toHaveBeenCalled();
+    expect(transacao.movimentacaoEstoque.create).not.toHaveBeenCalled();
+  });
+
+  /**
+   * O recebimento em dinheiro não pode ser informado
+   * para pagamentos realizados por outros meios.
+   */
+  it('deve rejeitar valor recebido para pagamento PIX', async () => {
+    prepararCenarioValido();
+
+    await expect(
+      service.criar(
+        'empresa-1',
+        'usuario-1',
+        {
+          formaPagamento: 'PIX',
+          valorRecebido: 100,
+          itens: [
+            {
+              produtoId: 'produto-1',
+              quantidade: 2,
+            },
+          ],
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(transacao.venda.create).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Preserva temporariamente o contrato antigo do PDV:
+   * vendas em dinheiro sem valor recebido continuam aceitas.
+   */
+  it('deve aceitar temporariamente dinheiro sem valor recebido', async () => {
+    prepararCenarioValido();
+
+    transacao.venda.create.mockResolvedValue({
+      ...vendaPersistida,
+      formaPagamento: 'DINHEIRO',
+    });
+
+    const resultado = await service.criar(
+      'empresa-1',
+      'usuario-1',
+      {
+        formaPagamento: 'DINHEIRO',
+        itens: [
+          {
+            produtoId: 'produto-1',
+            quantidade: 2,
+          },
+        ],
+      },
+    );
+
+    expect(resultado.valorRecebido).toBeNull();
+    expect(resultado.troco).toBeNull();
+
+    const chamada = transacao.venda.create.mock.calls[0][0] as {
+      data: {
+        valorRecebido: Prisma.Decimal | null;
+        troco: Prisma.Decimal | null;
+      };
+    };
+
+    expect(chamada.data.valorRecebido).toBeNull();
+    expect(chamada.data.troco).toBeNull();
+  });
 
   it('deve calcular o total e baixar o estoque em uma venda válida', async () => {
     prepararCenarioValido();

@@ -1,3 +1,4 @@
+import { consultarUnidadesVenda } from '../vendas/unidades-venda.js';
 import {
   BadRequestException,
   ConflictException,
@@ -13,6 +14,7 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { movimentarLotes } from './movimentar-lotes.js';
 
 import {
   AuditoriaService,
@@ -59,20 +61,22 @@ export class ProdutosService {
   empresaId: string,
   usuarioId: string,
   dto: CriarProdutoDto,
+  transacaoExistente?: Prisma.TransactionClient,
 ) {
   try {
-    // Confere se as referências informadas pertencem à empresa.
+    // Usa a mesma transação quando o cadastro faz parte de um recebimento.
     await this.validarCategoriaEUnidade(
       empresaId,
       dto.categoriaId,
       dto.unidadeId,
+      transacaoExistente,
     );
 
     // Inicializa os campos opcionais com valores padrão.
     const quantidadeInicial = dto.quantidadeInicial ?? 0;
     const estoqueMinimo = dto.estoqueMinimo ?? 0;
 
-    return await this.prisma.$transaction(async (transacao) => {
+    const gravarProduto = async (transacao: Prisma.TransactionClient) => {
       // 1. Cria o produto vinculado à empresa autenticada.
       const produto = await transacao.produto.create({
         data: {
@@ -103,7 +107,7 @@ export class ProdutosService {
 
       // 3. Registra a entrada inicial somente quando houver estoque.
       if (quantidadeInicial > 0) {
-        await transacao.movimentacaoEstoque.create({
+        const movimentacao = await transacao.movimentacaoEstoque.create({
           data: {
             empresaId,
             produtoId: produto.id,
@@ -114,6 +118,11 @@ export class ProdutosService {
             usuarioId,
           },
         });
+        await movimentarLotes(
+          transacao,
+          movimentacao,
+          new Prisma.Decimal(quantidadeInicial),
+        );
       }
 
       /*
@@ -149,8 +158,14 @@ export class ProdutosService {
         ...produto,
         saldoEstoque,
       };
-    });
+    };
+
+    return transacaoExistente
+      ? await gravarProduto(transacaoExistente)
+      : await this.prisma.$transaction(gravarProduto);
   } catch (erro) {
+    if (transacaoExistente) throw erro;
+
     // Registra a falha fora da transação revertida.
     await this.registrarFalhaAuditoria({
       empresaId,
@@ -341,9 +356,15 @@ export class ProdutosService {
       }),
     ]);
 
+    // Codigo da unidade, resolvido apenas no cadastro desta empresa.
+    const unidadesVenda = await consultarUnidadesVenda(this.prisma, empresaId, dados.map(p => p.unidadeId));
+    const dadosComUnidade = dados.map(produto => produto.unidadeId
+      ? { ...produto, unidadeCodigo: unidadesVenda.get(produto.unidadeId) ?? null }
+      : produto);
+
     // Mantém o formato de resposta utilizado pelo frontend.
     const resultado = {
-      dados,
+      dados: dadosComUnidade,
       total,
       pagina,
       limite,
@@ -575,6 +596,9 @@ export class ProdutosService {
   ) {
     const produto = await this.buscarProdutoPorEmpresa(empresaId, id);
 
+    const unidadeId = 'unidadeId' in produto && typeof produto.unidadeId === 'string' ? produto.unidadeId : undefined;
+    const unidades = await consultarUnidadesVenda(this.prisma, empresaId, [unidadeId]);
+
     await this.registrarConsulta({
       empresaId,
       atorId: usuarioId,
@@ -584,7 +608,7 @@ export class ProdutosService {
       entidadeId: id,
     });
 
-    return produto;
+    return unidadeId ? { ...produto, unidadeCodigo: unidades.get(unidadeId) ?? null } : produto;
   }
 
   /**
@@ -836,6 +860,7 @@ async alterarAtivacao(
     usuarioId: string,
     produtoId: string,
     dto: CriarMovimentacaoEstoqueDto,
+    transacaoExterna?: Prisma.TransactionClient,
   ) {
     const motivo = dto.motivo?.trim();
 
@@ -874,138 +899,174 @@ async alterarAtivacao(
       );
     }
 
+    const codigoLote = dto.codigoLote?.trim() || null;
+    const validadeInformada = dto.validadeEm ?? null;
+
+    if (
+      (dto.tipo === 'SAIDA' || quantidade.isNegative()) &&
+      (codigoLote !== null || validadeInformada !== null)
+    ) {
+      throw new BadRequestException(
+        'Código e validade do lote só podem ser informados ao adicionar estoque.',
+      );
+    }
+
+    let validadeEm: Date | null = null;
+    if (validadeInformada !== null) {
+      const data = new Date(validadeInformada + 'T00:00:00.000Z');
+      if (
+        Number.isNaN(data.getTime()) ||
+        data.getUTCFullYear() < 1 ||
+        data.toISOString().slice(0, 10) !== validadeInformada
+      ) {
+        throw new BadRequestException('Informe uma data de validade válida.');
+      }
+      validadeEm = data;
+    }
+
+    const executar = async (transacao: Prisma.TransactionClient) => {
+       // Verifica se o produto pertence à empresa autenticada.
+       const produto = await transacao.produto.findFirst({
+         where: {
+           id: produtoId,
+           empresaId,
+         },
+         select: {
+           id: true,
+         },
+       });
+
+       if (!produto) {
+         throw new NotFoundException(
+           'Produto não encontrado nesta empresa.',
+         );
+       }
+
+       // Busca o saldo usando o produto e a empresa como critérios.
+       let saldo = await transacao.saldoEstoque.findFirst({
+         where: {
+           produtoId,
+           empresaId,
+         },
+       });
+
+       /*
+        * Produtos cadastrados antes do controle de saldo podem não
+        * possuir um registro de estoque. Nesse caso, cria um saldo
+        * zerado dentro da transação antes de aplicar a movimentação.
+        */
+       if (!saldo) {
+         saldo = await transacao.saldoEstoque.create({
+           data: {
+             empresaId,
+             produtoId,
+             quantidadeDisponivel: 0,
+             quantidadeReservada: 0,
+             estoqueMinimo: 0,
+           },
+         });
+       }
+
+       // Converte o saldo para Decimal para realizar o cálculo.
+       const saldoAtual = new Prisma.Decimal(
+         saldo.quantidadeDisponivel.toString(),
+       );
+
+       // Calcula a variação de acordo com o tipo de movimentação.
+       let variacao: Prisma.Decimal;
+
+       if (dto.tipo === 'ENTRADA') {
+         variacao = quantidade;
+       } else if (dto.tipo === 'SAIDA') {
+         variacao = quantidade.negated();
+       } else {
+         // O ajuste já contém o sinal da diferença informada.
+         variacao = quantidade;
+       }
+
+       const saldoApos = saldoAtual.plus(variacao);
+
+       // Bloqueia operações que deixariam o saldo disponível negativo.
+       if (saldoApos.isNegative()) {
+         throw new BadRequestException(
+           'Saldo insuficiente para esta operação. ' +
+             `Disponível: ${saldoAtual.toString()}.`,
+         );
+       }
+
+       // Atualiza o saldo dentro da mesma transação.
+       const saldoAtualizado =
+         await transacao.saldoEstoque.update({
+           where: {
+             id: saldo.id,
+           },
+           data: {
+             quantidadeDisponivel: saldoApos,
+           },
+         });
+
+       // Registra a movimentação para manter o histórico auditável.
+       // Em ajustes, a quantidade mantém o sinal da diferença.
+       const movimentacao =
+         await transacao.movimentacaoEstoque.create({
+           data: {
+             empresaId,
+             produtoId,
+             tipo: dto.tipo,
+             quantidade,
+             saldoApos,
+             motivo,
+             referenciaId:
+               dto.referenciaId?.trim() || null,
+             usuarioId,
+           },
+         });
+
+       await movimentarLotes(transacao, movimentacao, variacao, {
+         codigoLote,
+         validadeEm,
+       });
+
+       // Devolve a movimentação junto com o saldo atualizado.
+      // Registra a operação na auditoria central, ainda na transação.
+       await this.auditoria.registrar(
+         {
+           empresaId,
+           atorId: usuarioId,
+           tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
+           modulo: 'ESTOQUE',
+           acao: dto.tipo,
+           entidade: 'PRODUTO',
+           entidadeId: produtoId,
+           resultado: ResultadoAuditoria.SUCESSO,
+           dadosPosteriores: {
+             movimentacaoId: movimentacao.id,
+             produtoId,
+             tipo: dto.tipo,
+             quantidade: quantidade.toString(),
+             saldoAnterior: saldoAtual.toString(),
+             saldoApos: saldoApos.toString(),
+             motivo,
+             referenciaId: dto.referenciaId?.trim() || null,
+           },
+         },
+         transacao,
+       );
+
+       // Devolve a movimentação junto com o saldo atualizado.
+       return {
+         ...movimentacao,
+         saldoEstoque: saldoAtualizado,
+       };
+    };
+
+    if (transacaoExterna) {
+      return executar(transacaoExterna);
+    }
+
     try {
       return await this.prisma.$transaction(
-        async (transacao) => {
-          // Verifica se o produto pertence à empresa autenticada.
-          const produto = await transacao.produto.findFirst({
-            where: {
-              id: produtoId,
-              empresaId,
-            },
-            select: {
-              id: true,
-            },
-          });
-
-          if (!produto) {
-            throw new NotFoundException(
-              'Produto não encontrado nesta empresa.',
-            );
-          }
-
-          // Busca o saldo usando o produto e a empresa como critérios.
-          let saldo = await transacao.saldoEstoque.findFirst({
-            where: {
-              produtoId,
-              empresaId,
-            },
-          });
-
-          /*
-           * Produtos cadastrados antes do controle de saldo podem não
-           * possuir um registro de estoque. Nesse caso, cria um saldo
-           * zerado dentro da transação antes de aplicar a movimentação.
-           */
-          if (!saldo) {
-            saldo = await transacao.saldoEstoque.create({
-              data: {
-                empresaId,
-                produtoId,
-                quantidadeDisponivel: 0,
-                quantidadeReservada: 0,
-                estoqueMinimo: 0,
-              },
-            });
-          }
-
-          // Converte o saldo para Decimal para realizar o cálculo.
-          const saldoAtual = new Prisma.Decimal(
-            saldo.quantidadeDisponivel.toString(),
-          );
-
-          // Calcula a variação de acordo com o tipo de movimentação.
-          let variacao: Prisma.Decimal;
-
-          if (dto.tipo === 'ENTRADA') {
-            variacao = quantidade;
-          } else if (dto.tipo === 'SAIDA') {
-            variacao = quantidade.negated();
-          } else {
-            // O ajuste já contém o sinal da diferença informada.
-            variacao = quantidade;
-          }
-
-          const saldoApos = saldoAtual.plus(variacao);
-
-          // Bloqueia operações que deixariam o saldo disponível negativo.
-          if (saldoApos.isNegative()) {
-            throw new BadRequestException(
-              'Saldo insuficiente para esta operação. ' +
-                `Disponível: ${saldoAtual.toString()}.`,
-            );
-          }
-
-          // Atualiza o saldo dentro da mesma transação.
-          const saldoAtualizado =
-            await transacao.saldoEstoque.update({
-              where: {
-                id: saldo.id,
-              },
-              data: {
-                quantidadeDisponivel: saldoApos,
-              },
-            });
-
-          // Registra a movimentação para manter o histórico auditável.
-          // Em ajustes, a quantidade mantém o sinal da diferença.
-          const movimentacao =
-            await transacao.movimentacaoEstoque.create({
-              data: {
-                empresaId,
-                produtoId,
-                tipo: dto.tipo,
-                quantidade,
-                saldoApos,
-                motivo,
-                referenciaId:
-                  dto.referenciaId?.trim() || null,
-                usuarioId,
-              },
-            });
-
-          // Devolve a movimentação junto com o saldo atualizado.
-         // Registra a operação na auditoria central, ainda na transação.
-          await this.auditoria.registrar(
-            {
-              empresaId,
-              atorId: usuarioId,
-              tipoAtor: TipoAtorAuditoria.USUARIO_EMPRESA,
-              modulo: 'ESTOQUE',
-              acao: dto.tipo,
-              entidade: 'PRODUTO',
-              entidadeId: produtoId,
-              resultado: ResultadoAuditoria.SUCESSO,
-              dadosPosteriores: {
-                movimentacaoId: movimentacao.id,
-                produtoId,
-                tipo: dto.tipo,
-                quantidade: quantidade.toString(),
-                saldoAnterior: saldoAtual.toString(),
-                saldoApos: saldoApos.toString(),
-                motivo,
-                referenciaId: dto.referenciaId?.trim() || null,
-              },
-            },
-            transacao,
-          );
-
-          // Devolve a movimentação junto com o saldo atualizado.
-          return {
-            ...movimentacao,
-            saldoEstoque: saldoAtualizado,
-          };
-        },
+        executar,
         {
           // Solicita ao PostgreSQL o isolamento serializável.
           // Conflitos de concorrência são tratados abaixo.
@@ -1211,9 +1272,10 @@ async alterarAtivacao(
     empresaId: string,
     categoriaId?: string | null,
     unidadeId?: string | null,
+    cliente: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
     if (categoriaId != null) {
-      const categoria = await this.prisma.categoria.findFirst({
+      const categoria = await cliente.categoria.findFirst({
         where: {
           id: categoriaId,
           empresaId,
@@ -1231,7 +1293,7 @@ async alterarAtivacao(
     }
 
     if (unidadeId != null) {
-      const unidade = await this.prisma.unidade.findFirst({
+      const unidade = await cliente.unidade.findFirst({
         where: {
           id: unidadeId,
           empresaId,

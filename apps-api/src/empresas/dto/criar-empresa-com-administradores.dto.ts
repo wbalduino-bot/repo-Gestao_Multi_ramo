@@ -5,11 +5,17 @@ import {
   IsArray,
   IsEmail,
   IsNotEmpty,
+  IsObject,
   IsString,
   MaxLength,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
+
+import {
+  AtualizarConfiguracaoFiscalDto,
+} from '../../configuracao-fiscal/dto/atualizar-configuracao-fiscal.dto.js';
 
 /**
  * Credenciais iniciais de um administrador empresarial.
@@ -56,4 +62,11 @@ export class CriarEmpresaComAdministradoresDto {
   @ValidateNested({ each: true })
   @Type(() => AdministradorEmpresaInicialDto)
   administradores!: AdministradorEmpresaInicialDto[];
+
+  // A configuração fiscal inicial é opcional. Quando enviada, deve ser um objeto.
+  @ValidateIf((_objeto, valor: unknown) => valor !== undefined)
+  @IsObject()
+  @ValidateNested()
+  @Type(() => AtualizarConfiguracaoFiscalDto)
+  configuracaoFiscal?: AtualizarConfiguracaoFiscalDto;
 }

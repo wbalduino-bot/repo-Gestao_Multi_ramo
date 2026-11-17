@@ -121,6 +121,7 @@ describe('UsuariosService', () => {
         expect.objectContaining({
           data: {
             empresaId: 'empresa-1',
+            deveTrocarSenha: true,
             nome: 'Novo Usuário',
             email: 'novo@empresa.com',
             hashSenha: 'hash-seguro',

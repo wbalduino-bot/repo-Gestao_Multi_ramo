@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ResultadoAuditoria, TipoAtorAuditoria } from '@prisma/client';
+import { Prisma, ResultadoAuditoria, TipoAtorAuditoria } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditoriaService } from '../auditoria/auditoria.service.js';
 import { CriarCategoriaDto } from './dto/criar-categoria.dto.js';
@@ -22,7 +22,7 @@ export class CategoriasService {
     return this.prisma.categoria.findMany({
       where: { empresaId },
       orderBy: [{ nome: 'asc' }, { id: 'asc' }],
-      select: { id: true, nome: true, categoriaPaiId: true },
+      select: { id: true, nome: true, categoriaPaiId: true, percentualAcrescimo: true },
     });
   }
 
@@ -58,8 +58,11 @@ export class CategoriasService {
           empresaId,
           nome: dto.nome,
           categoriaPaiId: dto.categoriaPaiId ?? null,
+          ...(dto.percentualAcrescimo !== undefined
+            ? { percentualAcrescimo: dto.percentualAcrescimo }
+            : {}),
         },
-        select: { id: true, nome: true, categoriaPaiId: true },
+        select: { id: true, nome: true, categoriaPaiId: true, percentualAcrescimo: true },
       });
 
       await this.auditoria.registrar({
@@ -71,7 +74,11 @@ export class CategoriasService {
         entidade: 'CATEGORIA',
         entidadeId: categoria.id,
         resultado: ResultadoAuditoria.SUCESSO,
-        dadosPosteriores: { nome: categoria.nome, categoriaPaiId: categoria.categoriaPaiId },
+        dadosPosteriores: {
+          nome: categoria.nome,
+          categoriaPaiId: categoria.categoriaPaiId,
+          percentualAcrescimo: categoria.percentualAcrescimo?.toString() ?? null,
+        },
       }, tx);
       return categoria;
     });
@@ -86,7 +93,7 @@ export class CategoriasService {
     return this.prisma.$transaction(async (tx) => {
       const anterior = await tx.categoria.findFirst({
         where: { id, empresaId },
-        select: { id: true, nome: true, categoriaPaiId: true },
+        select: { id: true, nome: true, categoriaPaiId: true, percentualAcrescimo: true },
       });
       if (!anterior) throw new NotFoundException('Categoria não encontrada.');
 
@@ -131,14 +138,47 @@ export class CategoriasService {
         throw new ConflictException('Já existe uma categoria com esse nome neste nível.');
       }
 
+      const percentualAnterior = anterior.percentualAcrescimo ?? null;
+      const percentualAcrescimo = dto.percentualAcrescimo === undefined
+        ? percentualAnterior
+        : new Prisma.Decimal(dto.percentualAcrescimo);
+      const alterarPercentual = percentualAcrescimo !== null &&
+        (percentualAnterior === null || !percentualAcrescimo.eq(percentualAnterior));
+
       // UpdateMany inclui empresaId na condição e impede alteração fora do tenant.
       const atualizacao = await tx.categoria.updateMany({
         where: { id, empresaId },
-        data: { nome, categoriaPaiId },
+        data: {
+          nome,
+          categoriaPaiId,
+          ...(alterarPercentual ? { percentualAcrescimo } : {}),
+        },
       });
       if (atualizacao.count !== 1) throw new NotFoundException('Categoria não encontrada.');
 
-      const atual = { id, nome, categoriaPaiId };
+      let produtosRecalculados = 0;
+      if (alterarPercentual) {
+        try {
+          produtosRecalculados = await tx.$executeRaw`
+            UPDATE "Produto"
+            SET "preco" = ROUND("custo" * (1 + ${percentualAcrescimo}::numeric / 100), 2),
+                "atualizadoEm" = ${new Date()}
+            WHERE "empresaId" = ${empresaId}::uuid
+              AND "categoriaId" = ${id}::uuid
+              AND "custo" > 0
+          `;
+        } catch (erro) {
+          if (
+            erro instanceof Prisma.PrismaClientKnownRequestError &&
+            erro.code === 'P2010' && erro.meta?.code === '22003'
+          ) {
+            throw new BadRequestException('O preço calculado excede o limite do cadastro.');
+          }
+          throw erro;
+        }
+      }
+
+      const atual = { id, nome, categoriaPaiId, percentualAcrescimo };
       await this.auditoria.registrar({
         empresaId,
         atorId,
@@ -148,10 +188,24 @@ export class CategoriasService {
         entidade: 'CATEGORIA',
         entidadeId: id,
         resultado: ResultadoAuditoria.SUCESSO,
-        dadosAnteriores: { nome: anterior.nome, categoriaPaiId: anterior.categoriaPaiId },
-        dadosPosteriores: { nome, categoriaPaiId },
+        dadosAnteriores: {
+          nome: anterior.nome,
+          categoriaPaiId: anterior.categoriaPaiId,
+          percentualAcrescimo: percentualAnterior?.toString() ?? null,
+        },
+        dadosPosteriores: {
+          nome,
+          categoriaPaiId,
+          percentualAcrescimo: percentualAcrescimo?.toString() ?? null,
+        },
+        metadados: { produtosRecalculados },
       }, tx);
-      return atual;
+      return { ...atual, produtosRecalculados };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((erro: unknown) => {
+      if (erro instanceof Prisma.PrismaClientKnownRequestError && erro.code === 'P2034') {
+        throw new ConflictException('A categoria ou seus produtos foram alterados. Tente novamente.');
+      }
+      throw erro;
     });
   }
 }

@@ -82,7 +82,7 @@ export default function PaginaAuditoria() {
         setAutorizado(permitido);
         setNegado(!permitido);
       })
-      .catch(() => { if (ativo) setNegado(true); })
+      .catch(() => { if (ativo) setErro("Não foi possível verificar suas permissões. Tente atualizar a página."); })
       .finally(() => { if (ativo) setVerificando(false); });
     return () => { ativo = false; };
   }, [encerrar]);
@@ -136,6 +136,7 @@ export default function PaginaAuditoria() {
         </div>
         {verificando && <p>Verificando permissões...</p>}
         {!verificando && negado && <p role="alert">Seu perfil não possui acesso à auditoria.</p>}
+        {!verificando && !autorizado && !negado && erro && <p role="alert">{erro}</p>}
         {autorizado && <>
           <section className={styles.metricas} aria-label="Indicadores do período e filtros">
             <article><span>Eventos encontrados</span><strong>{dados?.total ?? "—"}</strong></article>

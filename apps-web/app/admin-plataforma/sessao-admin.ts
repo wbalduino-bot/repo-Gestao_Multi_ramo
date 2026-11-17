@@ -3,7 +3,7 @@
  * Mantém a sessão da plataforma separada do login empresarial existente.
  */
 export const API_URL_ADMIN = (
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5433"
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"
 ).replace(/\/$/, "");
 
 export const CHAVE_ADMIN_TOKEN = "gestao.admin.accessToken";

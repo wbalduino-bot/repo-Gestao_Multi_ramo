@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfiguracaoFiscalModule } from './configuracao-fiscal/configuracao-fiscal.module.js';
 import { createObserveModule } from '@nestjs/observe';
 
 import { AppController } from './app.controller.js';
@@ -10,6 +11,8 @@ import { AdminPlataformaModule } from './admin-plataforma/admin-plataforma.modul
 import { UsuariosModule } from './usuarios/usuarios.module.js';
 import { ProdutosModule } from './produtos/produtos.module.js';
 import { VendasModule } from './vendas/vendas.module.js';
+import { CaixaModule } from './caixa/caixa.module.js';
+import { RecebimentosCompraModule } from './recebimentos-compra/recebimentos-compra.module.js';
 import { AuditoriaModule } from './auditoria/auditoria.module.js';
 import { CategoriasModule } from './categorias/categorias.module.js';
 import { UnidadesModule } from './unidades/unidades.module.js';
@@ -65,6 +68,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     // Registro das vendas, com validação de produtos e integração
     // transacional com o controle de estoque.
     VendasModule,
+    CaixaModule,
+    RecebimentosCompraModule,
 
     // Módulo central de auditoria.
     // Disponibiliza o AuditoriaService para os demais módulos,
@@ -73,6 +78,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
     // Consulta de auditoria restrita a cada empresa autenticada.
     AuditoriaEmpresaModule,
+
+    // Cadastro fiscal da empresa autenticada, sem habilitar emissão de notas.
+    ConfiguracaoFiscalModule,
   ],
 
   // Controller e serviço principais da aplicação.

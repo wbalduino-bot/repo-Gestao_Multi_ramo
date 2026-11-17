@@ -123,6 +123,20 @@ export class VendasController {
    * Retorna os detalhes de uma venda específica.
    * O serviço restringe a consulta à empresa autenticada.
    */
+  @Get('operacoes/:chave')
+  async buscarPorOperacao(
+    @Req() requisicao: RequisicaoAutenticada,
+    @Param('chave', new ParseUUIDPipe()) chave: string,
+  ) {
+    const resultado = await this.vendasService.buscarPorOperacao(
+      requisicao.user.empresaId, requisicao.user.sub, chave,
+    );
+    if (resultado.situacao === 'CONCLUIDA' && !perfilTemAcessoGerencial(requisicao.user.perfil)) {
+      return { ...resultado, venda: removerDadosFinanceiros(resultado.venda) };
+    }
+    return resultado;
+  }
+
   @Get(':id')
   async buscarPorId(
     @Req() requisicao: RequisicaoAutenticada,
@@ -152,6 +166,7 @@ export class VendasController {
       requisicao.user.empresaId,
       requisicao.user.sub,
       dto,
+      requisicao.ip ?? 'sem-ip',
     );
 
     // A venda é registrada normalmente; os campos gerenciais são

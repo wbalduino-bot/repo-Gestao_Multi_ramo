@@ -99,6 +99,22 @@ describe('ProdutosService', () => {
       update: vi.fn(),
     },
     movimentacaoEstoque: {
+      create: vi.fn((
+        { data }: { data: Prisma.MovimentacaoEstoqueUncheckedCreateInput },
+      ): unknown => ({
+        ...data,
+        id: 'movimentacao-1',
+        criadoEm: new Date('2026-11-07T12:00:00Z'),
+      })),
+    },
+    loteEstoque: {
+      create: vi.fn(() => ({ id: 'lote-1' })),
+      findMany: vi.fn(() => [
+        { id: 'lote-1', quantidadeRestante: new Prisma.Decimal('10') },
+      ]),
+      update: vi.fn(),
+    },
+    movimentacaoLoteEstoque: {
       create: vi.fn(),
     },
   };

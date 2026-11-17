@@ -122,6 +122,9 @@ describe('EmpresasService', () => {
 
     expect(transacao.empresa.create).toHaveBeenCalledWith({
       data: {
+        modalidadeAcesso: 'TRIAL',
+        trialIniciadoEm: expect.any(Date),
+        trialTerminaEm: expect.any(Date),
         nome: 'Mercado Exemplo',
         cnpj: '11222333000181',
       },
@@ -181,6 +184,9 @@ describe('EmpresasService', () => {
 
     expect(transacao.empresa.create).toHaveBeenCalledWith({
       data: {
+        modalidadeAcesso: 'TRIAL',
+        trialIniciadoEm: expect.any(Date),
+        trialTerminaEm: expect.any(Date),
         nome: 'Mercado Exemplo',
         cnpj: '11222333000181',
       },
@@ -206,6 +212,9 @@ describe('EmpresasService', () => {
 
     expect(transacao.empresa.create).toHaveBeenCalledWith({
       data: {
+        modalidadeAcesso: 'TRIAL',
+        trialIniciadoEm: expect.any(Date),
+        trialTerminaEm: expect.any(Date),
         nome: 'Empresa Exemplo',
         cnpj: '12ABC34501DE35',
       },

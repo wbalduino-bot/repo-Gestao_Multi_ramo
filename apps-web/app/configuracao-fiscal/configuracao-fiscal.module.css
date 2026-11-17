@@ -1,0 +1,159 @@
+.cartao {
+  background: #fff;
+  color: #142c46;
+  border: 1px solid #dce5f1;
+  border-radius: 16px;
+  padding: clamp(1rem, 2.5vw, 1.75rem);
+  box-shadow: 0 8px 24px rgb(20 44 70 / 6%);
+}
+
+.campos {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.legenda {
+  font-size: 1.15rem;
+  font-weight: 700;
+  padding: 0;
+  margin-bottom: 0.75rem;
+}
+
+.grupo + .grupo {
+  border-top: 1px solid #e0e8f2;
+  padding-top: 1rem;
+  margin-top: 1.25rem;
+}
+
+.grupo h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.85rem;
+}
+
+.campo {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.campo label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.campo input,
+.campo select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #bccde1;
+  border-radius: 8px;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.7rem;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+.campo input:focus-visible,
+.campo select:focus-visible,
+.acoes button:focus-visible,
+.secundario:focus-visible {
+  outline: 2px solid #285dc5;
+  outline-offset: 2px;
+}
+
+.acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+}
+
+.primario,
+.secundario {
+  min-height: 2.5rem;
+  border: 1px solid #285dc5;
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primario {
+  color: #fff;
+  background: #285dc5;
+}
+
+.secundario {
+  color: #204989;
+  background: #fff;
+}
+
+.primario:disabled,
+.secundario:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.aviso {
+  color: #1c5a45;
+  margin: 0.7rem 0;
+}
+
+.erro {
+  color: #98212a;
+  margin: 0.7rem 0;
+}
+
+.resumoEmpresa {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid #e0e8f2;
+}
+
+.resumoEmpresa p,
+.dicaAtualizacao {
+  color: #405973;
+  font-size: 0.875rem;
+  margin: 0.35rem 0 0;
+}
+
+.resumoEmpresa code {
+  overflow-wrap: anywhere;
+  margin-inline-start: 0.3rem;
+}
+
+.dicaAtualizacao {
+  margin: 0 0 0.85rem;
+}
+
+.confirmacaoSalvamento {
+  margin: 0.85rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #a9d7bc;
+  border-radius: 8px;
+  background: #e9f7ee;
+  color: #18543b;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.estadoAcoes {
+  align-self: center;
+  color: #405973;
+  font-size: 0.875rem;
+}

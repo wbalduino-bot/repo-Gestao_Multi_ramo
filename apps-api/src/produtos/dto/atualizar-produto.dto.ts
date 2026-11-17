@@ -77,7 +77,7 @@ export class AtualizarProdutoDto {
     if (value === null || value === '') return Number.NaN;
     return Number(value);
   })
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber({ maxDecimalPlaces: 6 })
   @Min(0)
   custo?: number;
 

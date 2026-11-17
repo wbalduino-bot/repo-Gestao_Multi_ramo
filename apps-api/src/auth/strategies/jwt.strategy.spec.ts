@@ -38,6 +38,7 @@ describe('JwtAuthGuard', () => {
     id: 'usuario-1',
     empresaId: 'empresa-1',
     perfil: 'GERENTE',
+    empresa: { modalidadeAcesso: 'DEFINITIVO', trialIniciadoEm: null, trialTerminaEm: null },
   };
 
   // Simula uma requisição HTTP com o cabeçalho de autenticação.
@@ -119,6 +120,7 @@ describe('JwtAuthGuard', () => {
         id: 'usuario-1',
         empresaId: 'empresa-1',
         ativo: true,
+        deveTrocarSenha: false,
         empresa: {
           is: {
             ativo: true,
@@ -129,6 +131,7 @@ describe('JwtAuthGuard', () => {
         id: true,
         empresaId: true,
         perfil: true,
+        empresa: { select: { modalidadeAcesso: true, trialIniciadoEm: true, trialTerminaEm: true } },
       },
     });
 
@@ -228,6 +231,7 @@ describe('JwtAuthGuard', () => {
         id: 'usuario-1',
         empresaId: 'empresa-2',
         ativo: true,
+        deveTrocarSenha: false,
         empresa: {
           is: {
             ativo: true,
@@ -238,6 +242,7 @@ describe('JwtAuthGuard', () => {
         id: true,
         empresaId: true,
         perfil: true,
+        empresa: { select: { modalidadeAcesso: true, trialIniciadoEm: true, trialTerminaEm: true } },
       },
     });
   });

@@ -21,6 +21,7 @@ import { ProdutosService } from './produtos.service.js';
     AuditoriaModule,
   ],
   controllers: [ProdutosController],
+  exports: [ProdutosService],
   providers: [
     ProdutosService,
     JwtAuthGuard,

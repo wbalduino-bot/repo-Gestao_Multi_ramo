@@ -2,6 +2,7 @@
 import {
   Body,
   Controller,
+  Headers,
   HttpCode,
   HttpStatus,
   Post,
@@ -12,6 +13,7 @@ import type { Request } from 'express';
 
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
+import { TrocarSenhaInicialDto } from './dto/trocar-senha-inicial.dto.js';
 
 /**
  * Define a rota base deste controller: /auth.
@@ -57,5 +59,15 @@ export class AuthController {
      * e a auditoria permanecem sob responsabilidade do serviço.
      */
     return this.authService.login(dto, ip);
+  }
+
+  /** Consome a autorização inicial e encerra sem criar uma sessão normal. */
+  @Post('primeiro-acesso')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async trocarSenhaInicial(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() dto: TrocarSenhaInicialDto,
+  ) {
+    await this.authService.trocarSenhaInicial(authorization, dto);
   }
 }

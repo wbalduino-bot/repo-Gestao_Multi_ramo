@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AvisoTrial } from "./aviso-trial";
 import { BotaoSair } from "./botao-sair";
 import styles from "./menu-lateral.module.css";
 
@@ -30,7 +31,7 @@ const itensPrincipais: ItemMenu[] = [
   { rotulo: "Visão geral", icone: "▦", href: "/dashboard" },
   { rotulo: "Produtos e estoque", icone: "▤", href: "/produtos" },
   { rotulo: "Vendas", icone: "↗", href: "/vendas" },
-  { rotulo: "Caixa", icone: "▣" },
+  { rotulo: "Caixa", icone: "▣", href: "/caixa" },
   { rotulo: "Clientes", icone: "♧" },
 ];
 
@@ -39,6 +40,8 @@ const itensGestao: ItemMenu[] = [
   { rotulo: "Usuários", icone: "♙", href: "/usuarios" },
   { rotulo: "Categorias e unidades", icone: "▤", href: "/cadastros-produtos" },
   { rotulo: "Auditoria", icone: "▧", href: "/auditoria" },
+  { rotulo: "Configuração fiscal", icone: "§", href: "/configuracao-fiscal" },
+  { rotulo: "Recebimentos de compra", icone: "⇩", href: "/recebimentos-compra" },
   { rotulo: "Configurações", icone: "⚙" },
 ];
 
@@ -60,7 +63,7 @@ export function MenuLateral({
       return;
     }
 
-    const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5433").replace(/\/$/, "");
+    const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
     fetch(`${apiUrl}/usuarios/me`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
@@ -149,15 +152,19 @@ export function MenuLateral({
         </span>
       </div>
 
+      <AvisoTrial />
+
       <nav className={styles.navegacao} aria-label="Menu principal">
         <span className={styles.tituloSecao}>PRINCIPAL</span>
 
-        {itensPrincipais.map(renderizarItem)}
+        {itensPrincipais
+          .filter((item) => item.href !== "/caixa" || podeGerenciarUsuarios)
+          .map(renderizarItem)}
 
         <span className={styles.tituloSecao}>GESTÃO</span>
 
         {itensGestao
-          .filter((item) => !["/usuarios", "/auditoria", "/cadastros-produtos"].includes(item.href ?? "") || podeGerenciarUsuarios)
+          .filter((item) => !["/usuarios", "/auditoria", "/cadastros-produtos", "/configuracao-fiscal", "/recebimentos-compra"].includes(item.href ?? "") || podeGerenciarUsuarios)
           .map(renderizarItem)}
       </nav>
 

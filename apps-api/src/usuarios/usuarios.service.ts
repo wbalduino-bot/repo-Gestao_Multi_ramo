@@ -92,6 +92,7 @@ export class UsuariosService {
               nome,
               email,
               hashSenha,
+              deveTrocarSenha: true,
               perfil,
             },
             select: USUARIO_PUBLICO_SELECT,

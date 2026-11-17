@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 
 import {
@@ -18,6 +19,8 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditoriaService } from '../auditoria/auditoria.service.js';
 
+import { iniciarTrialEmpresa } from './trial-empresa.js';
+import type { AlterarTrialDto } from './dto/alterar-trial.dto.js';
 import { CriarEmpresaDto } from './dto/criar-empresa.dto.js';
 import {
   AdministradorEmpresaInicialDto,
@@ -80,6 +83,62 @@ function cnpjValido(cnpjInformado: string): boolean {
 export class EmpresasService {
   private readonly logger = new Logger(EmpresasService.name);
 
+  /** A mudanca e a auditoria sao confirmadas na mesma transacao. */
+  async alterarTrial(administradorId: string, empresaId: string, dto: AlterarTrialDto) {
+    if (!['TRIAL', 'DEFINITIVO'].includes(dto.modalidade) ||
+        !Number.isSafeInteger(dto.versaoAcesso) || dto.versaoAcesso < 0 ||
+        dto.versaoAcesso > 2147483646 || typeof dto.justificativa !== 'string' ||
+        dto.justificativa.trim().length < 10 || dto.justificativa.trim().length > 500) {
+      throw new BadRequestException('Informe modalidade, versao e justificativa validas.');
+    }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const administrador = await tx.administradorPlataforma.findFirst({
+          where: { id: administradorId, ativo: true }, select: { id: true },
+        });
+        if (!administrador) throw new UnauthorizedException('Administrador da plataforma inativo.');
+        const anterior = await tx.empresa.findUnique({ where: { id: empresaId } });
+        if (!anterior) throw new NotFoundException('Empresa nao encontrada.');
+        if (anterior.versaoAcesso !== dto.versaoAcesso) {
+          throw new ConflictException('A empresa mudou. Atualize a lista antes de tentar novamente.');
+        }
+        const data = dto.modalidade === 'TRIAL'
+          ? iniciarTrialEmpresa()
+          : { modalidadeAcesso: 'DEFINITIVO' as const, trialIniciadoEm: null, trialTerminaEm: null };
+        const { count } = await tx.empresa.updateMany({
+          where: { id: empresaId, versaoAcesso: dto.versaoAcesso },
+          data: { ...data, versaoAcesso: { increment: 1 } },
+        });
+        if (count !== 1) throw new ConflictException('A empresa mudou. Atualize a lista.');
+        const empresa = await tx.empresa.findUniqueOrThrow({ where: { id: empresaId } });
+        await this.auditoria.registrar({
+          atorId: administradorId, tipoAtor: TipoAtorAuditoria.ADMIN_PLATAFORMA,
+          modulo: 'EMPRESAS', acao: dto.modalidade === 'TRIAL' ? 'ATIVAR_TRIAL' : 'REMOVER_TRIAL',
+          entidade: 'EMPRESA', entidadeId: empresaId, resultado: ResultadoAuditoria.SUCESSO,
+          justificativa: dto.justificativa.trim(),
+          dadosAnteriores: {
+            modalidadeAcesso: anterior.modalidadeAcesso,
+            trialIniciadoEm: anterior.trialIniciadoEm?.toISOString() ?? null,
+            trialTerminaEm: anterior.trialTerminaEm?.toISOString() ?? null,
+          },
+          dadosPosteriores: {
+            modalidadeAcesso: empresa.modalidadeAcesso,
+            trialIniciadoEm: empresa.trialIniciadoEm?.toISOString() ?? null,
+            trialTerminaEm: empresa.trialTerminaEm?.toISOString() ?? null,
+          },
+          metadados: { empresaAlvoId: empresaId, versaoAcesso: empresa.versaoAcesso },
+        }, tx);
+        return empresa;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (erro) {
+      if (erro instanceof Prisma.PrismaClientKnownRequestError && erro.code === 'P2034') {
+        throw new ConflictException('A empresa mudou durante a operacao. Atualize a lista.');
+      }
+      throw erro;
+    }
+  }
+
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoria: AuditoriaService,
@@ -110,6 +169,7 @@ export class EmpresasService {
             data: {
               nome: dto.nome.trim(),
               cnpj,
+              ...iniciarTrialEmpresa(),
             },
           });
 
@@ -168,13 +228,40 @@ export class EmpresasService {
         throw new BadRequestException('CNPJ inválido.');
       }
 
+      // Seleciona os campos cadastrais e descarta valores vazios na criação.
+      const camposFiscais = [
+        'razaoSocial', 'nomeFantasia', 'inscricaoEstadual', 'codigoCRT',
+        'logradouro', 'numero', 'complemento', 'bairro',
+        'codigoMunicipio', 'nomeMunicipio', 'uf', 'cep',
+      ] as const;
+      const dadosFiscais: Partial<
+        Record<(typeof camposFiscais)[number], string>
+      > = {};
+      const fiscal = dto.configuracaoFiscal;
+
+      if (fiscal !== undefined) {
+        for (const campo of camposFiscais) {
+          const valor = fiscal?.[campo];
+          if (typeof valor === 'string' && valor.trim()) {
+            dadosFiscais[campo] = valor.trim();
+          }
+        }
+      }
+
+      const camposInformados = Object.keys(dadosFiscais);
+      if (fiscal !== undefined && camposInformados.length === 0) {
+        throw new BadRequestException(
+          'Informe pelo menos um campo fiscal para criar a configuração.',
+        );
+      }
+
       const administradores = await this.prepararAdministradores(
         dto.administradores,
       );
 
       return await this.prisma.$transaction(async (transacao) => {
         const empresa = await transacao.empresa.create({
-          data: { nome: dto.nome.trim(), cnpj },
+          data: { nome: dto.nome.trim(), cnpj, ...iniciarTrialEmpresa() },
         });
 
         // A identidade SaaS é a responsável técnica por este provisionamento.
@@ -206,6 +293,7 @@ export class EmpresasService {
               nome: administrador.nome,
               email: administrador.email,
               hashSenha: administrador.hashSenha,
+              deveTrocarSenha: true,
               perfil: PerfilAcesso.ADMINISTRADOR,
             },
             select: {
@@ -240,6 +328,35 @@ export class EmpresasService {
           );
 
           usuarios.push(usuario);
+        }
+
+        if (camposInformados.length > 0) {
+          // Usa o ID recém-gerado e grava o cadastro fiscal na mesma transação.
+          const configuracao = await transacao.configuracaoFiscalEmpresa.create({
+            data: {
+              ...dadosFiscais,
+              empresaId: empresa.id,
+            },
+            select: { id: true },
+          });
+
+          await this.auditoria.registrar(
+            {
+              atorId: administradorPlataformaId,
+              tipoAtor: TipoAtorAuditoria.ADMIN_PLATAFORMA,
+              modulo: 'CONFIGURACAO_FISCAL',
+              acao: 'CRIAR',
+              entidade: 'CONFIGURACAO_FISCAL_EMPRESA',
+              entidadeId: configuracao.id,
+              resultado: ResultadoAuditoria.SUCESSO,
+              // Registra os campos informados e a empresa alvo para a auditoria SaaS.
+              metadados: {
+                empresaAlvoId: empresa.id,
+                camposInformados,
+              },
+            },
+            transacao,
+          );
         }
 
         return { empresa, administradores: usuarios };
@@ -285,6 +402,7 @@ export class EmpresasService {
             nome: administrador.nome,
             email: administrador.email,
             hashSenha: administrador.hashSenha,
+            deveTrocarSenha: true,
             perfil: PerfilAcesso.ADMINISTRADOR,
           },
           select: {

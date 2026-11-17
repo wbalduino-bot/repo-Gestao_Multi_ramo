@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  CAMPOS_ENDERECO_POR_CEP,
+  normalizarCepFiscal,
+  UFS_BRASIL as UFS_FISCAIS_INICIAIS,
+  useConsultaCepFiscal,
+} from "../../componentes/consulta-cep-fiscal";
+
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import styles from "../admin-plataforma.module.css";
@@ -17,6 +24,9 @@ type Empresa = {
   cnpj: string;
   ativo: boolean;
   criadoEm?: string;
+  modalidadeAcesso: 'TRIAL' | 'DEFINITIVO';
+  trialTerminaEm: string | null;
+  versaoAcesso: number;
 };
 
 type RespostaLista = {
@@ -62,6 +72,42 @@ const LIMITE = 10;
  * As permissões são impostas pelo AdminPlataformaGuard no backend;
  * este componente apenas controla navegação e apresentação.
  */
+const CAMPOS_FISCAIS_INICIAIS = [
+  { chave: "razaoSocial", rotulo: "Razão social", maxLength: 150, inputMode: "text" },
+  { chave: "nomeFantasia", rotulo: "Nome fantasia", maxLength: 150, inputMode: "text" },
+  { chave: "inscricaoEstadual", rotulo: "Inscrição estadual", maxLength: 20, inputMode: "text" },
+  { chave: "codigoCRT", rotulo: "Código do regime tributário (CRT)", maxLength: 2, inputMode: "numeric" },
+  { chave: "cep", rotulo: "CEP", maxLength: 9, inputMode: "numeric" },
+  { chave: "logradouro", rotulo: "Logradouro", maxLength: 150, inputMode: "text" },
+  { chave: "numero", rotulo: "Número", maxLength: 20, inputMode: "text" },
+  { chave: "complemento", rotulo: "Complemento", maxLength: 100, inputMode: "text" },
+  { chave: "bairro", rotulo: "Bairro", maxLength: 100, inputMode: "text" },
+  { chave: "nomeMunicipio", rotulo: "Município", maxLength: 100, inputMode: "text" },
+  { chave: "codigoMunicipio", rotulo: "Código do município (IBGE)", maxLength: 7, inputMode: "numeric" },
+  { chave: "uf", rotulo: "UF", maxLength: 2, inputMode: "text" },
+] as const;
+
+type CampoFiscalInicial = (typeof CAMPOS_FISCAIS_INICIAIS)[number]["chave"];
+type DadosFiscaisIniciais = Partial<Record<CampoFiscalInicial, string>>;
+
+/** Envia somente valores preenchidos e aceita CEP com ou sem hífen. */
+function montarConfiguracaoFiscal(
+  dados: DadosFiscaisIniciais,
+): DadosFiscaisIniciais | undefined {
+  const configuracao: DadosFiscaisIniciais = {};
+
+  for (const { chave } of CAMPOS_FISCAIS_INICIAIS) {
+    const valor = dados[chave]?.trim();
+    if (valor) {
+      configuracao[chave] = chave === "cep"
+        ? normalizarCepFiscal(valor)
+        : valor;
+    }
+  }
+
+  return Object.keys(configuracao).length > 0 ? configuracao : undefined;
+}
+
 export default function EmpresasAdminPlataforma() {
   const router = useRouter();
   const [nomeAdministrador, setNomeAdministrador] = useState("Administrador da plataforma");
@@ -80,6 +126,13 @@ export default function EmpresasAdminPlataforma() {
   const [empresaEditadaId, setEmpresaEditadaId] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [cnpj, setCnpj] = useState("");
+  const [dadosFiscaisIniciais, setDadosFiscaisIniciais] = useState<DadosFiscaisIniciais>({});
+  const cepFiscal = normalizarCepFiscal(dadosFiscaisIniciais.cep ?? "");
+  const { endereco, consultandoCep, mensagemCep, limparConsultaCep } =
+    useConsultaCepFiscal(cepFiscal, !empresaEditadaId);
+
+  // Vincula as sugestões ao CEP atual. Os valores editados no formulário prevalecem.
+  const dadosFiscaisExibidos = { ...endereco, ...dadosFiscaisIniciais };
 
   // Na criação conjunta, a API exige de um a dez administradores iniciais.
   const [administradoresIniciais, setAdministradoresIniciais] = useState<CredencialInicial[]>([
@@ -240,6 +293,8 @@ export default function EmpresasAdminPlataforma() {
     setNome("");
     setCnpj("");
     setAdministradoresIniciais([novaCredencial(1)]);
+    setDadosFiscaisIniciais({});
+    limparConsultaCep();
     setErroFormulario("");
   }
 
@@ -285,6 +340,8 @@ export default function EmpresasAdminPlataforma() {
     setEmpresaEditadaId(empresa.id);
     setNome(empresa.nome);
     setCnpj(empresa.cnpj);
+    setDadosFiscaisIniciais({});
+    limparConsultaCep();
     setErroFormulario("");
     setMensagem("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -292,7 +349,7 @@ export default function EmpresasAdminPlataforma() {
 
   async function salvar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    if (salvando) return;
+    if (salvando || consultandoCep) return;
     // Valida duplicidade antes de enviar as senhas à API.
     if (!empresaEditadaId) {
       const emails = administradoresIniciais.map((item) => item.email.trim().toLowerCase());
@@ -322,6 +379,9 @@ export default function EmpresasAdminPlataforma() {
         ? `${API_URL_ADMIN}/empresas/${encodeURIComponent(empresaEditadaId)}`
         : `${API_URL_ADMIN}/empresas/com-administradores`;
 
+      const configuracaoFiscal = ehEdicao
+        ? undefined
+        : montarConfiguracaoFiscal(dadosFiscaisExibidos);
       const dadosEnvio = ehEdicao
         ? { nome: nome.trim(), cnpj: cnpj.trim() }
         : {
@@ -332,6 +392,7 @@ export default function EmpresasAdminPlataforma() {
               email: email.trim().toLowerCase(),
               senha,
             })),
+            ...(configuracaoFiscal ? { configuracaoFiscal } : {}),
           };
 
       const resposta = await fetch(destino, {
@@ -376,6 +437,38 @@ export default function EmpresasAdminPlataforma() {
     } finally {
       setSalvando(false);
     }
+  }
+
+  async function alterarTrial(empresa: Empresa, modalidade: 'TRIAL' | 'DEFINITIVO') {
+    if (operacaoEmpresaId) return;
+    const acao = modalidade === 'TRIAL' ? 'iniciar ou reiniciar 30 dias de trial' : 'remover o trial e liberar o uso definitivo';
+    if (!window.confirm(`Deseja ${acao} para “${empresa.nome}”?${!empresa.ativo ? ' A empresa esta inativa e continuara inativa.' : ''}`)) return;
+    const justificativa = window.prompt('Informe o motivo (10 a 500 caracteres). Ex.: pagamento confirmado ou inicio do piloto.');
+    if (justificativa === null) return;
+    if (justificativa.trim().length < 10 || justificativa.trim().length > 500) {
+      setErroLista('Informe uma justificativa com 10 a 500 caracteres.'); return;
+    }
+    const token = sessionStorage.getItem(CHAVE_ADMIN_TOKEN);
+    if (!token) { router.replace('/admin-plataforma'); return; }
+    setOperacaoEmpresaId(empresa.id); setErroLista(''); setMensagem('');
+    try {
+      const resposta = await fetch(`${API_URL_ADMIN}/empresas/${encodeURIComponent(empresa.id)}/trial`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modalidade, versaoAcesso: empresa.versaoAcesso, justificativa: justificativa.trim() }),
+      });
+      if (resposta.status === 401 || resposta.status === 403) {
+        limparSessaoAdmin(); router.replace('/admin-plataforma'); return;
+      }
+      if (!resposta.ok) {
+        setErroLista(await lerMensagemErro(resposta, 'Nao foi possivel alterar o trial. Atualize a lista antes de repetir.'));
+        atualizarListagem(); return;
+      }
+      setMensagem(modalidade === 'TRIAL' ? 'Trial de 30 dias iniciado.' : 'Trial removido. Uso definitivo liberado para empresa ativa.');
+      atualizarListagem();
+    } catch {
+      setErroLista('Resposta nao confirmada. Atualize a lista para consultar a modalidade antes de repetir a operacao.');
+      atualizarListagem();
+    } finally { setOperacaoEmpresaId(null); }
   }
 
   async function alterarAtivacao(empresa: Empresa) {
@@ -605,8 +698,87 @@ export default function EmpresasAdminPlataforma() {
                 </p>
               </div>
             )}
+            {!empresaEditadaId && (
+              <details className={styles.dadosFiscaisIniciais}>
+                <summary>Dados fiscais (opcional)</summary>
+                <p className={styles.mutado}>
+                  Preencha os dados disponíveis. Use só números no CRT e no código do município.
+                </p>
+                <div className={styles.camposFiscaisIniciais}>
+                  {CAMPOS_FISCAIS_INICIAIS.map((campo) => {
+                    const id = `empresa-fiscal-${campo.chave}`;
+                    const valor = dadosFiscaisExibidos[campo.chave] ?? "";
+
+                    // Remonta os campos de endereço para limpar valores retidos pelo navegador.
+                    const chaveRenderizacao = CAMPOS_ENDERECO_POR_CEP.some(
+                      (chave) => chave === campo.chave,
+                    ) ? `${campo.chave}:${cepFiscal}` : campo.chave;
+
+                    const atualizar = (valor: string) => {
+                      const mudouCep =
+                        campo.chave === "cep" && normalizarCepFiscal(valor) !== cepFiscal;
+
+                      if (mudouCep) limparConsultaCep();
+
+                      setDadosFiscaisIniciais((atuais) => {
+                        const proximos: DadosFiscaisIniciais = {
+                          ...atuais,
+                          [campo.chave]: valor,
+                        };
+
+                        // O endereço anterior perde a referência quando o CEP muda.
+                        if (mudouCep) {
+                          for (const chave of CAMPOS_ENDERECO_POR_CEP) {
+                            delete proximos[chave];
+                          }
+                        }
+
+                        return proximos;
+                      });
+                    };
+
+                    return (
+                      <div key={chaveRenderizacao} className={styles.campo}>
+                        <label htmlFor={id}>{campo.rotulo}</label>
+                        {campo.chave === "uf" ? (
+                          <select
+                            id={id}
+                            value={valor}
+                            disabled={salvando}
+                            onChange={(evento) => atualizar(evento.target.value)}
+                          >
+                            <option value="">Selecione a UF</option>
+                            {UFS_FISCAIS_INICIAIS.map((uf) => (
+                              <option key={uf} value={uf}>{uf}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            id={id}
+                            type="text"
+                            value={valor}
+                            inputMode={campo.inputMode}
+                            maxLength={campo.maxLength}
+                            placeholder={campo.chave === "cep" ? "00000-000" : undefined}
+                            aria-describedby={campo.chave === "cep" ? "empresa-fiscal-cep-status" : undefined}
+                            autoComplete="off"
+                            disabled={salvando}
+                            onChange={(evento) => atualizar(evento.target.value)}
+                          />
+                        )}
+                        {campo.chave === "cep" && (
+                          <small id="empresa-fiscal-cep-status" role="status" className={styles.mutado}>
+                            {mensagemCep}
+                          </small>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            )}
             <div className={styles.botaoCampo}>
-              <button type="submit" className={styles.botaoPrincipal} disabled={salvando}>
+              <button type="submit" className={styles.botaoPrincipal} disabled={salvando || consultandoCep}>
                 {salvando ? "Salvando..." : empresaEditadaId ? "Salvar alterações" : "Cadastrar empresa e administradores"}
               </button>
             </div>
@@ -647,7 +819,7 @@ export default function EmpresasAdminPlataforma() {
             <div className={styles.tabelaRolagem}>
               <table className={styles.tabela}>
                 <thead>
-                  <tr><th>Empresa</th><th>EmpresaId</th><th>CNPJ</th><th>Situação</th><th>Ações</th></tr>
+                  <tr><th>Empresa</th><th>EmpresaId</th><th>CNPJ</th><th>Situação</th><th>Acesso</th><th>Ações</th></tr>
                 </thead>
                 <tbody>
                   {empresas.map((empresa) => (
@@ -663,7 +835,17 @@ export default function EmpresasAdminPlataforma() {
                       <td>{empresa.cnpj}</td>
                       <td><span className={empresa.ativo ? styles.ativo : styles.inativo}>{empresa.ativo ? "Ativa" : "Inativa"}</span></td>
                       <td>
+                        {empresa.modalidadeAcesso === 'TRIAL'
+                          ? <><strong>{empresa.trialTerminaEm && Date.parse(empresa.trialTerminaEm) <= Date.now() ? 'Trial vencido' : 'Trial'}</strong><br />
+                              {empresa.trialTerminaEm ? new Date(empresa.trialTerminaEm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' (Brasilia)' : 'Prazo indisponivel'}</>
+                          : 'Definitivo'}
+                      </td>
+                      <td>
                         <div className={styles.acoesLinha}>
+                          <button type="button" className={styles.botaoSecundario} disabled={operacaoEmpresaId !== null || !Number.isInteger(empresa.versaoAcesso)}
+                            onClick={() => void alterarTrial(empresa, 'TRIAL')}>{empresa.modalidadeAcesso === 'TRIAL' ? 'Reiniciar trial (30 dias)' : 'Ativar trial (30 dias)'}</button>
+                          {empresa.modalidadeAcesso === 'TRIAL' && <button type="button" className={styles.botaoSecundario} disabled={operacaoEmpresaId !== null}
+                            onClick={() => void alterarTrial(empresa, 'DEFINITIVO')}>Remover trial / Tornar definitiva</button>}
                           <button type="button" className={styles.botaoSecundario} onClick={() => editar(empresa)}>Editar</button>
                           <button type="button" className={styles.botaoSecundario}
                             onClick={() => selecionarEmpresa(empresa)}>

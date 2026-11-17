@@ -78,8 +78,8 @@ describe('CategoriasService', () => {
       });
       expect(auditoria.registrar).toHaveBeenCalledWith(expect.objectContaining({
         empresaId: 'empresa-A', atorId: 'usuario-A', acao: 'ATUALIZAR',
-        dadosAnteriores: { nome: anterior.nome, categoriaPaiId: null },
-        dadosPosteriores: { nome: 'Cervejas', categoriaPaiId: null },
+        dadosAnteriores: { nome: anterior.nome, categoriaPaiId: null, percentualAcrescimo: null },
+        dadosPosteriores: { nome: 'Cervejas', categoriaPaiId: null, percentualAcrescimo: null },
       }), tx);
     });
 

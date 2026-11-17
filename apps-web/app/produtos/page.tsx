@@ -499,6 +499,10 @@ export default function ProdutosPage() {
   const [motivoMovimentacao, setMotivoMovimentacao] = useState("");
   const [referenciaMovimentacao, setReferenciaMovimentacao] =
     useState("");
+  const [codigoLoteMovimentacao, setCodigoLoteMovimentacao] = useState("");
+  const [validadeMovimentacao, setValidadeMovimentacao] = useState("");
+  const podeInformarLote = tipoMovimentacao === "ENTRADA" ||
+    (tipoMovimentacao === "AJUSTE" && Number(quantidadeMovimentacao) > 0);
   const [enviandoMovimentacao, setEnviandoMovimentacao] =
     useState(false);
   const [erroMovimentacao, setErroMovimentacao] = useState("");
@@ -1082,6 +1086,8 @@ useEffect(() => {
     setQuantidadeMovimentacao("1");
     setMotivoMovimentacao("");
     setReferenciaMovimentacao("");
+    setCodigoLoteMovimentacao("");
+    setValidadeMovimentacao("");
     setErroMovimentacao("");
     setModalMovimentacaoAberto(true);
   }
@@ -1172,6 +1178,12 @@ useEffect(() => {
         quantidade,
         motivo,
         ...(referenciaId ? { referenciaId } : {}),
+        ...(podeInformarLote && codigoLoteMovimentacao.trim()
+          ? { codigoLote: codigoLoteMovimentacao.trim() }
+          : {}),
+        ...(podeInformarLote && validadeMovimentacao
+          ? { validadeEm: validadeMovimentacao }
+          : {}),
       };
 
       const resposta = await fetch(
@@ -2179,6 +2191,29 @@ useEffect(() => {
                     />
                     <small>{motivoMovimentacao.length}/250 caracteres</small>
                   </label>
+
+                  {podeInformarLote && (
+                    <>
+                      <label className={styles.campoCompleto}>
+                        Código do lote (opcional)
+                        <input
+                          maxLength={100}
+                          value={codigoLoteMovimentacao}
+                          onChange={(evento) => setCodigoLoteMovimentacao(evento.target.value)}
+                          disabled={enviandoMovimentacao}
+                        />
+                      </label>
+                      <label className={styles.campoCompleto}>
+                        Validade (opcional)
+                        <input
+                          type="date"
+                          value={validadeMovimentacao}
+                          onChange={(evento) => setValidadeMovimentacao(evento.target.value)}
+                          disabled={enviandoMovimentacao}
+                        />
+                      </label>
+                    </>
+                  )}
 
                   <label className={styles.campoCompleto}>
                     Referência (opcional)

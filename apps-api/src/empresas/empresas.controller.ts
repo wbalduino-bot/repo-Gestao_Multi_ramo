@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
+import { AlterarTrialDto } from './dto/alterar-trial.dto.js';
 import { EmpresasService } from './empresas.service.js';
 import { CriarEmpresaDto } from './dto/criar-empresa.dto.js';
 import {
@@ -83,6 +84,15 @@ export class EmpresasController {
    * Cria empresa e seus administradores de maneira atômica.
    * O cliente não escolhe o EmpresaId: ele é gerado pelo banco.
    */
+  @Patch(':id/trial')
+  alterarTrial(
+    @Req() requisicao: RequisicaoAdminPlataforma,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AlterarTrialDto,
+  ) {
+    return this.empresasService.alterarTrial(this.obterAdministradorId(requisicao), id, dto);
+  }
+
   @Post('com-administradores')
   criarComAdministradores(
     @Req() requisicao: RequisicaoAdminPlataforma,

@@ -7,6 +7,11 @@ import {
   IsArray,
   IsIn,
   IsNumber,
+  IsOptional,
+  IsEmail,
+  IsString,
+  Max,
+  MaxLength,
   IsUUID,
   Min,
   ValidateNested,
@@ -50,6 +55,11 @@ export class ItemVendaDto {
  * do frontend: são calculados e conferidos pelo backend.
  */
 export class CriarVendaDto {
+  /** UUID mantido pela tela durante os reenvios da mesma compra. */
+  @IsOptional()
+  @IsUUID()
+  chaveOperacao?: string;
+
   @IsIn([
     'DINHEIRO',
     'PIX',
@@ -58,6 +68,41 @@ export class CriarVendaDto {
     'OUTRO',
   ])
   formaPagamento!: FormaPagamentoPermitida;
+
+  /** Percentual (0 a 5, com ate duas casas). O total continua calculado na API. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(5)
+  percentualDesconto?: number;
+
+  /** Identificacao do autorizador; participa da chave de idempotencia. */
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  autorizadorEmail?: string;
+
+  /** Senha utilizada somente nesta requisicao. Nunca salvar no navegador. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  senhaAutorizador?: string;
+
+  /**
+   * Valor entregue pelo cliente quando o pagamento for em dinheiro.
+   * Opcional durante a transicao do frontend para o novo contrato.
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'O valor recebido deve ter no máximo duas casas decimais.' },
+  )
+  @Min(0, {
+    message: 'O valor recebido não pode ser negativo.',
+  })
+  valorRecebido?: number;
 
   @IsArray()
   @ArrayMinSize(1, {

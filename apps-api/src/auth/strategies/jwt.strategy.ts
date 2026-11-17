@@ -5,6 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { consultarTrialEmpresa } from '../../empresas/trial-empresa.js';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -14,6 +15,8 @@ interface DadosToken {
   sub: string;
   empresaId: string;
   perfil: string;
+  aud?: unknown;
+  trial?: { terminaEm: string; diasRestantes: number };
 }
 
 // Requisição HTTP que contém os dados do usuário autenticado.
@@ -52,6 +55,11 @@ export class JwtAuthGuard implements CanActivate {
       const payload =
         await this.jwtService.verifyAsync<DadosToken>(token);
 
+      // Tokens com audiência específica não são sessões empresariais.
+      if (payload.aud !== undefined) {
+        throw new UnauthorizedException('Token inválido para acesso empresarial.');
+      }
+
       // Confere os campos necessários para identificar o usuário.
       if (
         typeof payload.sub !== 'string' ||
@@ -68,6 +76,7 @@ export class JwtAuthGuard implements CanActivate {
           id: payload.sub,
           empresaId: payload.empresaId,
           ativo: true,
+          deveTrocarSenha: false,
           empresa: {
             is: {
               ativo: true,
@@ -78,6 +87,7 @@ export class JwtAuthGuard implements CanActivate {
           id: true,
           empresaId: true,
           perfil: true,
+          empresa: { select: { modalidadeAcesso: true, trialIniciadoEm: true, trialTerminaEm: true } },
         },
       });
 
@@ -95,11 +105,17 @@ export class JwtAuthGuard implements CanActivate {
         );
       }
 
+      const acesso = consultarTrialEmpresa(usuario.empresa);
+      if (acesso.bloqueado) {
+        throw new UnauthorizedException({ codigo: 'TRIAL_EXPIRADO', message: 'Periodo de teste encerrado. Entre em contato com o administrador do sistema para liberar o acesso.' });
+      }
+
       // Usa os dados confirmados pelo banco, não apenas os do token.
       request.user = {
         sub: usuario.id,
         empresaId: usuario.empresaId,
         perfil: usuario.perfil,
+        ...(acesso.trial ? { trial: acesso.trial } : {}),
       };
 
       return true;

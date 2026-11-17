@@ -9,6 +9,8 @@ import { PrismaModule } from '../prisma/prisma.module.js';
 
 import { VendasController } from './vendas.controller.js';
 import { VendasService } from './vendas.service.js';
+import { EstornosVendaService } from './estornos-venda.service.js';
+import { EstornosVendaController } from './estornos-venda.controller.js';
 
 /**
  * Módulo responsável pelo registro e pelas consultas de vendas.
@@ -22,7 +24,7 @@ import { VendasService } from './vendas.service.js';
     AuditoriaModule,
     PrismaModule,
   ],
-  controllers: [VendasController],
-  providers: [VendasService, JwtAuthGuard, GerenciaGuard],
+  controllers: [VendasController, EstornosVendaController],
+  providers: [VendasService, EstornosVendaService, JwtAuthGuard, GerenciaGuard],
 })
 export class VendasModule {}

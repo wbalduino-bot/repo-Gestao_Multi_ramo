@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -65,4 +66,20 @@ export class CriarMovimentacaoEstoqueDto {
   @IsString()
   @MaxLength(100)
   referenciaId?: string;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  codigoLote?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$/, {
+    message: 'Informe a validade no formato AAAA-MM-DD.',
+  })
+  validadeEm?: string;
 }

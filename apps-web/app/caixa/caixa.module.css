@@ -1,0 +1,126 @@
+/* Painel gerencial premium: sem bibliotecas externas, sem alterar as regras da API. */
+.pagina { display:grid; grid-template-columns:200px minmax(0,1fr); min-height:100vh; background:#f3f6fb; color:#18304d; }
+.conteudo { min-width:0; padding:24px clamp(16px,2.25vw,42px) 40px; }
+.cabecalho { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:0 0 20px; flex-wrap:wrap; }
+.tituloComIcone { display:flex; align-items:center; gap:14px; }
+.iconeCabecalho { height:50px; width:50px; flex:0 0 50px; border-radius:14px; display:grid; place-items:center; font-size:26px; font-weight:900; color:#1764b7; background:linear-gradient(145deg,#cce3ff,#eaf3ff); box-shadow:0 3px 11px rgba(32,91,155,.12); }
+.sobretitulo { color:#3b6393!important; font-size:10px!important; font-weight:850; letter-spacing:1.4px; margin:0 0 4px!important; }
+.cabecalho h1 { margin:0 0 4px; font-size:clamp(23px,2.15vw,34px); font-weight:800; letter-spacing:-.7px; line-height:1.2; color:#122b4c; }
+.cabecalho p { font-size:13px; color:#5b7089; margin:0; }
+.link { color:#195292; background:#fff; border:1px solid #cad9eb; padding:10px 15px; border-radius:9px; font-size:13px; font-weight:750; white-space:nowrap; text-decoration:none; box-shadow:0 1px 2px rgba(20,49,91,.05); }
+.link:hover { background:#ebf4ff; }
+.aviso { display:flex; gap:12px; align-items:center; padding:13px 16px; margin:0 0 17px; background:#fff8e9; border:1px solid #f2c369; border-radius:11px; color:#8b560b; }
+.avisoIcone { display:grid; place-items:center; flex:0 0 25px; width:25px; height:25px; border:2px solid currentColor; border-radius:50%; font-size:15px; font-weight:900; }
+.aviso strong { display:block; font-size:13px; color:#864b07; margin:0 0 4px; }
+.aviso p { margin:0; font-size:12px; line-height:1.5; color:#825713; }
+.painel { background:#fff; border:1px solid #dce5f1; border-radius:13px; padding:18px; min-width:0; margin:0; box-shadow:0 2px 6px rgba(22,54,93,.045); }
+.painel h2 { margin:0; color:#142c4d; font-size:15px; font-weight:790; letter-spacing:-.15px; }
+.painel h3 { margin:0; }
+.painel p { margin:0; }
+.painelFiltros { padding:13px 16px; display:flex; align-items:end; justify-content:space-between; gap:16px; margin-bottom:12px; flex-wrap:wrap; }
+.controles { display:flex; align-items:end; flex-wrap:wrap; gap:12px; }
+.controles label,.formFechar label { display:flex; flex-direction:column; gap:5px; color:#2e415c; font-size:12px; font-weight:750; }
+.controles select,.controles input,.formFechar textarea,.seletorUnidade select { background:#fff; color:#182f4d; border:1px solid #cad7e6; border-radius:8px; padding:8px 11px; min-height:38px; font-size:13px; }
+.controles select { min-width:140px; }
+.controles input { min-width:158px; }
+.controles button,.formFechar button { cursor:pointer; border:0; border-radius:9px; padding:11px 15px; min-height:39px; font-size:13px; font-weight:760; background:#1c65bb; color:#fff; }
+.controles button:hover,.formFechar button:hover { background:#18549f; }
+.controles button:disabled,.formFechar button:disabled { cursor:wait; opacity:.55; }
+.resumoPeriodo { color:#537094; font-size:12px; font-weight:650; padding-bottom:6px; }
+.carregando { font-size:13px; color:#1b5b9b; margin:8px 0; }
+.erro { border-radius:9px; padding:13px; background:#fff0ef; border:1px solid #f0b8b1; color:#982e27; font-size:13px; margin-bottom:12px; }
+.sucesso { border-radius:9px; padding:13px; background:#e9faef; border:1px solid #b0e8c3; color:#167242; font-size:13px; margin-bottom:12px; }
+.alerta { padding:15px; color:#932924; border:1px solid #e8b3a9; background:#fff2ef; border-radius:9px; }
+.cards { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; margin:14px 0; }
+.card { border-radius:12px; padding:13px; display:flex; flex-direction:column; min-width:0; min-height:128px; border:1px solid #c8dbea; background:#edf5ff; box-shadow:0 2px 5px rgba(33,76,121,.055); }
+.cardAzul { background:linear-gradient(145deg,#e9f3ff,#f8fbff); border-color:#c3dbfb; --tom:#286bc1; }
+.cardRosa { background:linear-gradient(145deg,#fff0f3,#fff9fa); border-color:#f5d0d8; --tom:#c53d5a; }
+.cardLaranja { background:linear-gradient(145deg,#fff2e7,#fffaf6); border-color:#f6d8bd; --tom:#d27e24; }
+.cardVerde { background:linear-gradient(145deg,#e8f9ed,#f6fff8); border-color:#cae9d1; --tom:#17864e; }
+.cardCiano { background:linear-gradient(145deg,#eaf6ff,#f8fcff); border-color:#cce3f4; --tom:#3477b0; }
+.cardVioleta { background:linear-gradient(145deg,#f4edff,#fbf9ff); border-color:#ded1f8; --tom:#7655c1; }
+.cardCabecalho { display:flex; align-items:center; gap:7px; min-height:28px; font-size:11px; font-weight:730; color:#273e59; }
+.cardIcone { display:grid; place-items:center; width:28px; height:28px; border-radius:9px; flex:0 0 28px; background:#ffffffa8; color:var(--tom); font-size:11px; font-weight:900; }
+.card strong { display:block; font-size:clamp(16px,1.6vw,24px); color:var(--tom); line-height:1.25; letter-spacing:-.5px; margin-top:8px; white-space:nowrap; }
+.cardRodape { display:flex; align-items:end; justify-content:space-between; gap:4px; min-height:30px; margin-top:auto; }
+.cardRodape span { font-size:10px; line-height:1.35; color:#566c82; }
+.miniTendencia { flex:0 0 54px; width:54px; height:26px; opacity:.9; }
+.gradeDestaque { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:12px; margin:0 0 12px; align-items:stretch; }
+.gradeDestaque .painel { min-width:0; }
+.painelTitulo { display:flex; justify-content:space-between; gap:12px; align-items:start; margin-bottom:13px; }
+.emojiTitulo { color:#1868bd; font-weight:900; margin-right:6px; font-size:19px; }
+.nota { color:#718097; font-size:11px; line-height:1.55; margin:6px 0 0!important; }
+.valorPainel { color:#164c89; font-size:17px; white-space:nowrap; }
+.graficoComLegenda { min-width:0; }
+.legendaGrafico { display:flex; gap:8px 14px; flex-wrap:wrap; margin-bottom:4px; font-size:10px; color:#51627a; }
+.legendaGrafico span,.pagamentoNome { display:flex; gap:5px; align-items:center; }
+.legendaGrafico i,.pagamentoNome i { display:inline-block; height:9px; width:9px; border-radius:3px; flex:0 0 9px; }
+.graficoSvgWrap { width:100%; min-width:0; }
+.svgGrafico { display:block; width:100%; height:auto; max-height:300px; }
+.eixoGrafico { fill:#5b718c; font-size:10px; }
+.legendaNota { color:#75869c; font-size:10px; margin-top:-2px!important; }
+.pagamentoContainer { display:flex; align-items:center; gap:10px; min-height:230px; }
+.roscaColuna { flex:0 0 43%; min-width:100px; }
+.roscaGrafico { display:block; width:100%; max-width:216px; height:auto; margin:0 auto; }
+.roscaValor { font-size:15px; font-weight:840; fill:#16345b; }
+.roscaRotulo { font-size:9px; fill:#607792; }
+.legendaPagamento { flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; }
+.itemPagamento { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:6px; border-bottom:1px solid #edf1f7; padding-bottom:7px; font-size:10px; }
+.pagamentoNome { min-width:0; }
+.pagamentoNome span { overflow-wrap:anywhere; }
+.itemPagamento strong { white-space:nowrap; font-size:10px; color:#1c3653; }
+.pctPagamento { color:#6d7b90; font-size:10px; white-space:nowrap; }
+.painelIndicadores { margin-bottom:12px; }
+.gradeMedidores { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.medidorCard { min-width:0; text-align:center; border:1px solid #e2e9f2; border-radius:10px; padding:9px 8px 11px; background:#fcfdff; }
+.medidorCard h3 { font-size:11px; font-weight:800; color:#243b5b; min-height:27px; }
+.medidorSvg { display:block; max-width:143px; width:100%; margin:2px auto 0; }
+.medidorValor { fill:#183456; font-size:19px; font-weight:840; }
+.medidorCard p { font-size:10px; line-height:1.4; color:#677a92; min-height:30px; }
+.gradeProdutos,.gradeResumoAlertas { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:stretch; margin-bottom:12px; }
+.rankingLista { display:flex; flex-direction:column; gap:11px; margin-top:14px; }
+.rankingLinha { display:flex; flex-direction:column; gap:5px; }
+.rankingLinha small { color:#71849a; font-size:10px; }
+.rankingDescricao { display:flex; justify-content:space-between; gap:14px; font-size:11px; align-items:center; }
+.rankingDescricao span { display:flex; gap:8px; align-items:center; min-width:0; overflow-wrap:anywhere; }
+.rankingDescricao strong { color:#223a59; font-size:11px; white-space:nowrap; }
+.posicaoRank { background:#e8eff8; color:#446280; width:21px; height:21px; border-radius:50%; display:grid; place-items:center; flex:0 0 21px; font-size:10px; }
+.barraTrilho { height:9px; border-radius:6px; background:#eaf0f7; overflow:hidden; }
+.barraAzul,.barraVerde { height:100%; border-radius:6px; min-width:0; background:linear-gradient(90deg,#3a88df,#2165bd); }
+.barraVerde { background:linear-gradient(90deg,#3ac18a,#168b69); }
+.seletorUnidade { font-size:10px; color:#536883; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.seletorUnidade select { min-height:30px; padding:4px 6px; font-size:11px; }
+.linhasResumo { display:flex; flex-direction:column; gap:2px; margin-top:13px; }
+.linhasResumo > div { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:9px 10px; border-bottom:1px solid #edf2f7; font-size:11px; }
+.linhasResumo strong { white-space:nowrap; font-size:11px; }
+.linhaDestaque { background:#eaf9ef; color:#136e40; border-radius:7px; font-weight:800; border-bottom:0!important; }
+.listaAlertas { display:flex; flex-direction:column; gap:9px; margin-top:13px; }
+.itemAlerta { display:flex; flex-direction:column; gap:4px; padding:11px; border-radius:9px; font-size:11px; line-height:1.35; }
+.itemAlerta strong { font-size:11px; }
+.itemAlerta span { font-size:10px; }
+.alertaVermelho { background:#fff0f0; color:#ab3037; }
+.alertaLaranja { background:#fff5e8; color:#99590e; }
+.alertaAzul { background:#edf5ff; color:#2a5d93; }
+.alertaVerde { background:#e9f8ef; color:#197443; }
+.painelFechamento { margin-bottom:12px; }
+.formFechar { display:flex; align-items:end; flex-wrap:wrap; gap:14px; margin-top:12px; }
+.formFechar label { flex:1; min-width:220px; }
+.formFechar textarea { width:100%; min-height:65px; resize:vertical; }
+.painelTabela { margin-bottom:12px; }
+.tabelaWrapper { width:100%; overflow-x:auto; }
+.tabelaWrapper table { width:100%; border-collapse:collapse; font-size:11px; }
+.tabelaWrapper thead th { background:#edf3fa; color:#355471; text-align:left; padding:12px 10px; white-space:nowrap; }
+.tabelaWrapper tbody tr:nth-child(even) { background:#f9fbfd; }
+.tabelaWrapper tbody tr:hover { background:#eef6ff; }
+.tabelaWrapper td { padding:9px 10px; border-bottom:1px solid #e9eff5; white-space:nowrap; }
+.tabelaWrapper td:last-child { color:#173d73; }
+.situacaoAberto { color:#ba7420; font-weight:700; }
+.situacaoFechado { color:#1d8a53; font-weight:700; }
+.divergencia { color:#b43f35; font-weight:700; }
+.rodapeDados { color:#667f96; font-size:11px; margin:10px 0; }
+@media(max-width:1500px) { .cards{grid-template-columns:repeat(3,minmax(0,1fr));} .gradeDestaque{grid-template-columns:minmax(0,1fr);} .pagamentoContainer{min-height:180px;} .roscaColuna{max-width:220px;} }
+@media(max-width:950px) { .gradeProdutos,.gradeResumoAlertas{grid-template-columns:minmax(0,1fr);} .gradeMedidores{grid-template-columns:repeat(2,minmax(0,1fr));} .conteudo{padding:18px 14px;} }
+@media(max-width:750px) { .pagina{display:block;} .cards{grid-template-columns:repeat(2,minmax(0,1fr));} .card{min-height:116px;} .cabecalho{align-items:flex-start;} .pagamentoContainer{flex-direction:column;align-items:stretch;} .roscaColuna{align-self:center;} .legendaPagamento{width:100%;} }
+@media(max-width:450px) { .cards{grid-template-columns:minmax(0,1fr);} .gradeMedidores{grid-template-columns:minmax(0,1fr);} .painel{padding:14px;} }
+.painelEvolucao { min-width:0; }
+.botaoPrimario { box-shadow:0 2px 7px rgba(28,101,187,.15); }

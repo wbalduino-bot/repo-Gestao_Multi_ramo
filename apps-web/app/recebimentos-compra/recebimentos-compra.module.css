@@ -1,0 +1,35 @@
+.rolagem {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.tabela {
+  width: 100%;
+  min-width: 48rem;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.tabela th,
+.tabela td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e0e8f2;
+}
+
+.tabela th {
+  background: #f5f8fc;
+}
+
+.tabela small {
+  display: block;
+  margin-top: 0.2rem;
+  color: #52677f;
+}
+
+.paginacao {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
